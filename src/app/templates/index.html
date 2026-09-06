@@ -1,0 +1,382 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hybrid Parental Control</title>
+    <!-- Tailwind CSS via CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Vue 3 via CDN -->
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <!-- Axios -->
+    <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+    <style>
+        [v-cloak] { display: none; }
+    </style>
+</head>
+<body class="bg-gray-100 font-sans text-gray-800">
+    <div id="app" v-cloak class="min-h-screen flex flex-col">
+
+        <!-- Header / Nav -->
+        <header class="bg-blue-600 text-white shadow-md">
+            <div class="container mx-auto px-4 py-4 flex justify-between items-center">
+                <h1 class="text-2xl font-bold">Parental Control Dashboard</h1>
+                <nav>
+                    <button @click="currentView = 'dashboard'" :class="{'font-bold border-b-2 border-white': currentView === 'dashboard'}" class="mx-2 hover:text-blue-200">Dashboard</button>
+                    <button @click="currentView = 'profiles'" :class="{'font-bold border-b-2 border-white': currentView === 'profiles'}" class="mx-2 hover:text-blue-200">Profiles</button>
+                    <button @click="currentView = 'settings'" :class="{'font-bold border-b-2 border-white': currentView === 'settings'}" class="mx-2 hover:text-blue-200">Settings</button>
+                    <button @click="logout" class="mx-2 ml-6 bg-blue-700 hover:bg-blue-800 px-3 py-1 rounded text-sm">Logout</button>
+                </nav>
+            </div>
+        </header>
+
+        <!-- Main Content -->
+        <main class="flex-grow container mx-auto px-4 py-8">
+
+            <!-- Dashboard View -->
+            <div v-if="currentView === 'dashboard'">
+                <h2 class="text-xl font-bold mb-4">Today's Usage</h2>
+
+                <div v-if="dashboard.length === 0" class="text-gray-500 italic">
+                    No active limits tracked for today. Add profiles and quotas first.
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    <div v-for="item in dashboard" :key="item.profile_id + '-' + item.category_id" class="bg-white rounded-lg shadow p-5 border-l-4" :class="item.is_blocked ? 'border-red-500' : 'border-green-500'">
+                        <div class="flex justify-between items-start mb-2">
+                            <h3 class="font-bold text-lg">{{ item.profile_name }}</h3>
+                            <span v-if="item.is_blocked" class="bg-red-100 text-red-800 text-xs font-semibold px-2 py-1 rounded">BLOCKED</span>
+                            <span v-else class="bg-green-100 text-green-800 text-xs font-semibold px-2 py-1 rounded">ACTIVE</span>
+                        </div>
+                        <p class="text-gray-600 text-sm mb-4">Category: <span class="font-semibold">{{ item.category_name }}</span></p>
+
+                        <!-- Progress Bar -->
+                        <div class="w-full bg-gray-200 rounded-full h-4 mb-2">
+                            <div class="h-4 rounded-full"
+                                 :class="{'bg-red-500': item.is_blocked, 'bg-blue-500': !item.is_blocked && (item.active_minutes/item.limit_minutes) < 0.8, 'bg-yellow-500': !item.is_blocked && (item.active_minutes/item.limit_minutes) >= 0.8}"
+                                 :style="'width: ' + Math.min((item.active_minutes / item.limit_minutes) * 100, 100) + '%'"></div>
+                        </div>
+                        <div class="flex justify-between text-sm text-gray-500 mb-4">
+                            <span>{{ item.active_minutes }} mins used</span>
+                            <span>{{ item.limit_minutes }} mins limit</span>
+                        </div>
+
+                        <div class="flex gap-2">
+                            <button @click="resetUsage(item.profile_id, item.category_id)" class="text-xs bg-gray-100 hover:bg-gray-200 text-gray-800 font-semibold py-1 px-3 border border-gray-400 rounded shadow">
+                                Reset Usage
+                            </button>
+                            <button @click="unblockStation(item.profile_id)" class="text-xs bg-gray-100 hover:bg-gray-200 text-gray-800 font-semibold py-1 px-3 border border-gray-400 rounded shadow">
+                                Lift Station Block
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <h2 class="text-xl font-bold mt-12 mb-4">Recent Events</h2>
+                <div class="bg-white rounded-lg shadow overflow-hidden">
+                    <table class="min-w-full divide-y divide-gray-200">
+                        <thead class="bg-gray-50">
+                            <tr>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Time</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Action</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Target</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Reason</th>
+                            </tr>
+                        </thead>
+                        <tbody class="bg-white divide-y divide-gray-200">
+                            <tr v-for="log in logs" :key="log.id">
+                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{{ new Date(log.timestamp).toLocaleString() }}</td>
+                                <td class="px-6 py-4 whitespace-nowrap">
+                                    <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full"
+                                          :class="{'bg-red-100 text-red-800': log.action === 'BLOCK', 'bg-green-100 text-green-800': log.action === 'UNBLOCK', 'bg-blue-100 text-blue-800': log.action === 'RESET'}">
+                                      {{ log.action }}
+                                    </span>
+                                </td>
+                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{{ log.target }}</td>
+                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{{ log.reason }}</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Profiles View -->
+            <div v-if="currentView === 'profiles'">
+                <div class="flex justify-between items-center mb-6">
+                    <h2 class="text-xl font-bold">Managed Profiles (Kids)</h2>
+                    <button @click="showAddProfile = true" class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded">Add Profile</button>
+                </div>
+
+                <div class="bg-white shadow rounded-lg p-6 mb-6" v-if="showAddProfile">
+                    <h3 class="font-bold mb-4">New Profile</h3>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                        <input v-model="newProfile.name" placeholder="Name (e.g. Timmy's iPad)" class="border p-2 rounded">
+                        <input v-model="newProfile.ip_address" placeholder="Static IP (e.g. 192.168.1.50)" class="border p-2 rounded">
+                        <input v-model="newProfile.mac_address" placeholder="MAC Address (e.g. aa:bb:cc:dd:ee:ff)" class="border p-2 rounded">
+                        <input v-model="newProfile.curfew_start" type="time" placeholder="Curfew Start" class="border p-2 rounded">
+                        <input v-model="newProfile.curfew_end" type="time" placeholder="Curfew End" class="border p-2 rounded">
+                        <select v-model="newProfile.curfew_enforcement" class="border p-2 rounded">
+                            <option value="station_block">Station Block (Full cutoff)</option>
+                        </select>
+                    </div>
+                    <div class="flex gap-2">
+                        <button @click="createProfile" class="bg-green-500 hover:bg-green-700 text-white py-1 px-4 rounded">Save</button>
+                        <button @click="showAddProfile = false" class="bg-gray-300 hover:bg-gray-400 py-1 px-4 rounded">Cancel</button>
+                    </div>
+                </div>
+
+                <div v-for="prof in profiles" :key="prof.id" class="bg-white shadow rounded-lg p-6 mb-4">
+                    <div class="flex justify-between items-start mb-4">
+                        <div>
+                            <h3 class="text-lg font-bold">{{ prof.name }}</h3>
+                            <p class="text-sm text-gray-500">IP: {{ prof.ip_address }} | MAC: {{ prof.mac_address }}</p>
+                            <p class="text-sm text-gray-500" v-if="prof.curfew_start">Curfew: {{ prof.curfew_start }} to {{ prof.curfew_end }}</p>
+                        </div>
+                        <button @click="deleteProfile(prof.id)" class="text-red-500 hover:text-red-700">Delete</button>
+                    </div>
+
+                    <h4 class="font-semibold text-sm mb-2 text-gray-700">Quotas & Limits</h4>
+                    <ul class="mb-4">
+                        <li v-for="quota in prof.quotas" :key="quota.id" class="text-sm flex justify-between border-b py-1">
+                            <span>Category ID: {{ quota.category_id }} ({{ quota.daily_limit_minutes }} mins) -> Rule ID: {{ quota.traffic_rule_id || 'N/A' }}</span>
+                            <button @click="deleteQuota(quota.id)" class="text-red-400 text-xs">Remove</button>
+                        </li>
+                    </ul>
+
+                    <div class="flex items-center gap-2 mt-2">
+                        <select v-model="newQuota[prof.id].category_id" class="border p-1 text-sm rounded">
+                            <option value="" disabled selected>Select Category</option>
+                            <option v-for="cat in categories" :value="cat.id">{{ cat.name }}</option>
+                        </select>
+                        <input v-model.number="newQuota[prof.id].daily_limit_minutes" type="number" placeholder="Mins/day" class="border p-1 w-24 text-sm rounded">
+                        <input v-model="newQuota[prof.id].traffic_rule_id" placeholder="UniFi Traffic Rule ID" class="border p-1 text-sm rounded">
+                        <button @click="addQuota(prof.id)" class="bg-blue-100 hover:bg-blue-200 text-blue-800 px-2 py-1 rounded text-sm font-semibold">Add Limit</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Settings View -->
+            <div v-if="currentView === 'settings'">
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+
+                    <!-- System Config -->
+                    <div class="bg-white shadow rounded-lg p-6">
+                        <h2 class="text-xl font-bold mb-4">System Settings</h2>
+                        <form @submit.prevent="saveSettings" class="space-y-4">
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700">UniFi Host / IP</label>
+                                <input v-model="settings.unifi_host" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2">
+                            </div>
+                            <div class="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700">UniFi Port</label>
+                                    <input v-model.number="settings.unifi_port" type="number" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2">
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700">UniFi Site</label>
+                                    <input v-model="settings.unifi_site" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2">
+                                </div>
+                            </div>
+                            <div class="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700">UniFi Username</label>
+                                    <input v-model="settings.unifi_username" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2">
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700">UniFi Password</label>
+                                    <input v-model="settings.unifi_password" type="password" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2">
+                                </div>
+                            </div>
+                            <hr class="my-4">
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700">Pi-hole 1 API URL</label>
+                                <input v-model="settings.pihole_url_1" placeholder="http://192.168.1.2" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2">
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700">Pi-hole 1 API Key</label>
+                                <input v-model="settings.pihole_api_key_1" type="password" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2">
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700">Pi-hole 2 API URL (Optional)</label>
+                                <input v-model="settings.pihole_url_2" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2">
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700">Pi-hole 2 API Key (Optional)</label>
+                                <input v-model="settings.pihole_api_key_2" type="password" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2">
+                            </div>
+                            <button type="submit" class="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none">
+                                Save Settings
+                            </button>
+                        </form>
+                    </div>
+
+                    <!-- Categories Config -->
+                    <div class="bg-white shadow rounded-lg p-6">
+                        <h2 class="text-xl font-bold mb-4">Domain Categories</h2>
+
+                        <div class="mb-6 space-y-2">
+                            <div v-for="cat in categories" :key="cat.id" class="p-3 border rounded flex justify-between items-center bg-gray-50">
+                                <div>
+                                    <h4 class="font-bold">{{ cat.name }} (ID: {{ cat.id }})</h4>
+                                    <p class="text-xs text-gray-600 truncate w-64">{{ cat.domains }}</p>
+                                </div>
+                                <button @click="deleteCategory(cat.id)" class="text-red-500 text-sm hover:underline">Delete</button>
+                            </div>
+                        </div>
+
+                        <div class="border-t pt-4">
+                            <h3 class="font-bold mb-2">Add New Category</h3>
+                            <input v-model="newCategory.name" placeholder="Category Name (e.g. YouTube)" class="w-full border p-2 mb-2 rounded">
+                            <textarea v-model="newCategory.domains" placeholder="Domains separated by comma (e.g. youtube.com, googlevideo.com)" rows="3" class="w-full border p-2 mb-2 rounded text-sm"></textarea>
+                            <button @click="createCategory" class="bg-green-500 hover:bg-green-600 text-white py-1 px-4 rounded text-sm">Add Category</button>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+
+        </main>
+    </div>
+
+    <script>
+        const { createApp } = Vue
+
+        // Add axios interceptor to handle basic auth gracefully if needed
+        // Note: browser handles basic auth natively when navigating to the root URL
+
+        createApp({
+            data() {
+                return {
+                    currentView: 'dashboard',
+                    settings: {},
+                    categories: [],
+                    profiles: [],
+                    dashboard: [],
+                    logs: [],
+
+                    showAddProfile: false,
+                    newProfile: {
+                        name: '', ip_address: '', mac_address: '',
+                        curfew_start: '', curfew_end: '', curfew_enforcement: 'station_block'
+                    },
+                    newCategory: { name: '', domains: '' },
+                    newQuota: {} // Bound dynamically by profile ID
+                }
+            },
+            mounted() {
+                this.fetchData();
+                // Refresh dashboard every 30s
+                setInterval(() => {
+                    if(this.currentView === 'dashboard') {
+                        this.fetchDashboard();
+                        this.fetchLogs();
+                    }
+                }, 30000);
+            },
+            methods: {
+                async fetchData() {
+                    try {
+                        await this.fetchSettings();
+                        await this.fetchCategories();
+                        await this.fetchProfiles();
+                        await this.fetchDashboard();
+                        await this.fetchLogs();
+                    } catch (e) {
+                        if(e.response && e.response.status === 401) {
+                            window.location.reload(); // Prompt browser basic auth again
+                        }
+                    }
+                },
+                logout() {
+                    // Quick way to clear basic auth in most modern browsers
+                    // Redirect to the same url but with bad credentials embedded
+                    const url = new URL(window.location.href);
+                    window.location.href = `${url.protocol}//log:out@${url.host}${url.pathname}`;
+                },
+                async fetchSettings() {
+                    const res = await axios.get('/api/settings');
+                    this.settings = res.data;
+                },
+                async saveSettings() {
+                    await axios.put('/api/settings', this.settings);
+                    alert("Settings saved!");
+                },
+                async fetchCategories() {
+                    const res = await axios.get('/api/categories');
+                    this.categories = res.data;
+                },
+                async createCategory() {
+                    await axios.post('/api/categories', this.newCategory);
+                    this.newCategory = { name: '', domains: '' };
+                    this.fetchCategories();
+                },
+                async deleteCategory(id) {
+                    if(confirm("Delete category?")) {
+                        await axios.delete(`/api/categories/${id}`);
+                        this.fetchCategories();
+                    }
+                },
+                async fetchProfiles() {
+                    const res = await axios.get('/api/profiles');
+                    this.profiles = res.data;
+                    // Initialize quota form state
+                    this.profiles.forEach(p => {
+                        if (!this.newQuota[p.id]) {
+                            this.newQuota[p.id] = { category_id: '', daily_limit_minutes: 60, enforcement: 'traffic_rule', traffic_rule_id: '' };
+                        }
+                    });
+                },
+                async createProfile() {
+                    // Format time inputs to string or null if empty
+                    const payload = { ...this.newProfile };
+                    if(!payload.curfew_start) payload.curfew_start = null;
+                    if(!payload.curfew_end) payload.curfew_end = null;
+
+                    await axios.post('/api/profiles', payload);
+                    this.showAddProfile = false;
+                    this.newProfile = { name: '', ip_address: '', mac_address: '', curfew_start: '', curfew_end: '', curfew_enforcement: 'station_block' };
+                    this.fetchProfiles();
+                },
+                async deleteProfile(id) {
+                    if(confirm("Delete profile?")) {
+                        await axios.delete(`/api/profiles/${id}`);
+                        this.fetchProfiles();
+                    }
+                },
+                async addQuota(prof_id) {
+                    const q = this.newQuota[prof_id];
+                    if(!q.category_id) return alert("Select a category");
+                    await axios.post(`/api/profiles/${prof_id}/quotas`, q);
+                    this.fetchProfiles();
+                },
+                async deleteQuota(id) {
+                    if(confirm("Remove limit?")) {
+                        await axios.delete(`/api/quotas/${id}`);
+                        this.fetchProfiles();
+                    }
+                },
+                async fetchDashboard() {
+                    const res = await axios.get('/api/dashboard');
+                    this.dashboard = res.data;
+                },
+                async fetchLogs() {
+                    const res = await axios.get('/api/logs?limit=10');
+                    this.logs = res.data;
+                },
+                async resetUsage(prof_id, cat_id) {
+                    if(confirm("Reset usage for today? This will unblock if currently blocked.")) {
+                        await axios.post(`/api/overrides/reset-usage/${prof_id}/${cat_id}`);
+                        this.fetchDashboard();
+                    }
+                },
+                async unblockStation(prof_id) {
+                    if(confirm("Lift station block?")) {
+                        await axios.post(`/api/overrides/unblock-station/${prof_id}`);
+                        this.fetchDashboard();
+                    }
+                }
+            }
+        }).mount('#app')
+    </script>
+</body>
+</html>

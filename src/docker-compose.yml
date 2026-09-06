@@ -1,0 +1,19 @@
+version: '3.8'
+
+services:
+  unifiparent:
+    build: .
+    container_name: unifiparent
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    volumes:
+      - data_vol:/data
+    environment:
+      - ADMIN_USERNAME=admin
+      - ADMIN_PASSWORD=changeme
+      - TZ=America/Los_Angeles # Change to your timezone
+      - DATABASE_URL=sqlite+aiosqlite:////data/parental_control.db
+
+volumes:
+  data_vol:
