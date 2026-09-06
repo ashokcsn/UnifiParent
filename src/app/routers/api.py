@@ -70,15 +70,18 @@ async def delete_category(cat_id: int, db: AsyncSession = Depends(get_db)):
 @router.get("/profiles", response_model=List[ProfileResponse])
 async def get_profiles(db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(Profile).options(selectinload(Profile.quotas)))
-    return result.scalars().all()
+    profiles = result.scalars().all()
+    return list(profiles)
 
 @router.post("/profiles", response_model=ProfileResponse)
 async def create_profile(prof_in: ProfileCreate, db: AsyncSession = Depends(get_db)):
     prof = Profile(**prof_in.model_dump())
     db.add(prof)
     await db.commit()
-    await db.refresh(prof)
-    return prof
+    # Explicitly load relationships for response
+    result = await db.execute(select(Profile).options(selectinload(Profile.quotas)).where(Profile.id == prof.id))
+    prof_with_quotas = result.scalars().first()
+    return prof_with_quotas
 
 @router.delete("/profiles/{prof_id}")
 async def delete_profile(prof_id: int, db: AsyncSession = Depends(get_db)):
@@ -98,7 +101,8 @@ async def add_quota(prof_id: int, quota_in: ProfileQuotaCreate, db: AsyncSession
     await db.commit()
     # Return updated profile
     result = await db.execute(select(Profile).options(selectinload(Profile.quotas)).where(Profile.id == prof_id))
-    return result.scalars().first()
+    prof = result.scalars().first()
+    return prof
 
 @router.delete("/quotas/{quota_id}")
 async def delete_quota(quota_id: int, db: AsyncSession = Depends(get_db)):

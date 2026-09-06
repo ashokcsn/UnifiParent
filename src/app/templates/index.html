@@ -19,6 +19,7 @@
 
         <!-- Header / Nav -->
         <header class="bg-blue-600 text-white shadow-md">
+{% raw %}
             <div class="container mx-auto px-4 py-4 flex justify-between items-center">
                 <h1 class="text-2xl font-bold">Parental Control Dashboard</h1>
                 <nav>
@@ -28,10 +29,12 @@
                     <button @click="logout" class="mx-2 ml-6 bg-blue-700 hover:bg-blue-800 px-3 py-1 rounded text-sm">Logout</button>
                 </nav>
             </div>
-        </header>
+        {% endraw %}
+</header>
 
         <!-- Main Content -->
         <main class="flex-grow container mx-auto px-4 py-8">
+{% raw %}
 
             <!-- Dashboard View -->
             <div v-if="currentView === 'dashboard'">
@@ -146,7 +149,7 @@
                     <div class="flex items-center gap-2 mt-2">
                         <select v-model="newQuota[prof.id].category_id" class="border p-1 text-sm rounded">
                             <option value="" disabled selected>Select Category</option>
-                            <option v-for="cat in categories" :value="cat.id">{{ cat.name }}</option>
+                            <option v-for="cat in categories" :value="cat.id" :key="cat.id">{{ cat.name }}</option>
                         </select>
                         <input v-model.number="newQuota[prof.id].daily_limit_minutes" type="number" placeholder="Mins/day" class="border p-1 w-24 text-sm rounded">
                         <input v-model="newQuota[prof.id].traffic_rule_id" placeholder="UniFi Traffic Rule ID" class="border p-1 text-sm rounded">
@@ -235,7 +238,8 @@
                 </div>
             </div>
 
-        </main>
+        {% endraw %}
+</main>
     </div>
 
     <script>
