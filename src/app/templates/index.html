@@ -64,9 +64,12 @@
                             <span>{{ item.limit_minutes }} mins limit</span>
                         </div>
 
-                        <div class="flex gap-2">
+                        <div class="flex flex-wrap gap-2">
                             <button @click="resetUsage(item.profile_id, item.category_id)" class="text-xs bg-gray-100 hover:bg-gray-200 text-gray-800 font-semibold py-1 px-3 border border-gray-400 rounded shadow">
                                 Reset Usage
+                            </button>
+                            <button @click="addBonus(item.profile_id, item.category_id, 15)" class="text-xs bg-green-100 hover:bg-green-200 text-green-800 font-semibold py-1 px-3 border border-green-400 rounded shadow">
+                                +15m Bonus
                             </button>
                             <button @click="unblockStation(item.profile_id)" class="text-xs bg-gray-100 hover:bg-gray-200 text-gray-800 font-semibold py-1 px-3 border border-gray-400 rounded shadow">
                                 Lift Station Block
@@ -112,15 +115,49 @@
 
                 <div class="bg-white shadow rounded-lg p-6 mb-6" v-if="showAddProfile">
                     <h3 class="font-bold mb-4">New Profile</h3>
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-                        <input v-model="newProfile.name" placeholder="Name (e.g. Timmy's iPad)" class="border p-2 rounded">
-                        <input v-model="newProfile.ip_address" placeholder="Static IP (e.g. 192.168.1.50)" class="border p-2 rounded">
-                        <input v-model="newProfile.mac_address" placeholder="MAC Address (e.g. aa:bb:cc:dd:ee:ff)" class="border p-2 rounded">
-                        <input v-model="newProfile.curfew_start" type="time" placeholder="Curfew Start" class="border p-2 rounded">
-                        <input v-model="newProfile.curfew_end" type="time" placeholder="Curfew End" class="border p-2 rounded">
-                        <select v-model="newProfile.curfew_enforcement" class="border p-2 rounded">
-                            <option value="station_block">Station Block (Full cutoff)</option>
+                    
+                    <div class="mb-6 bg-blue-50 p-3 rounded border border-blue-100">
+                        <label class="block text-sm font-semibold text-blue-800 mb-1">Auto-fill from UniFi Network</label>
+                        <p class="text-xs text-blue-600 mb-2">Select an existing device to automatically grab its IP and MAC address.</p>
+                        <select @change="autoFillProfile($event.target.value)" class="block w-full border border-blue-200 p-2 rounded text-sm bg-white">
+                            <option value="" disabled selected>Select a client...</option>
+                            <option v-for="c in unifiClients" :value="c.mac" :key="c.mac">{{ c.name }} (IP: {{ c.ip }} | MAC: {{ c.mac }})</option>
                         </select>
+                    </div>
+
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700">Name</label>
+                            <input v-model="newProfile.name" placeholder="e.g. Timmy's iPad" class="mt-1 block w-full border p-2 rounded">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700">IP Address</label>
+                            <input v-model="newProfile.ip_address" placeholder="e.g. 192.168.1.50" class="mt-1 block w-full border p-2 rounded">
+                            <p class="text-xs text-gray-500 mt-1">Needed to track DNS queries in Pi-hole. Use a static IP.</p>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700">MAC Address</label>
+                            <input v-model="newProfile.mac_address" placeholder="e.g. aa:bb:cc:dd:ee:ff" class="mt-1 block w-full border p-2 rounded">
+                            <p class="text-xs text-gray-500 mt-1">Needed to block the device in UniFi.</p>
+                        </div>
+                        <div class="col-span-1 md:col-span-2 bg-gray-50 p-3 rounded border">
+                            <p class="text-sm text-gray-700 font-semibold mb-2">Curfew (Optional)</p>
+                            <p class="text-xs text-gray-500 mb-3">If set, the device will be completely disconnected from the network (Station Block) between these times.</p>
+                            <div class="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label class="block text-xs font-medium text-gray-600">Start Time</label>
+                                    <input v-model="newProfile.curfew_start" type="time" class="mt-1 w-full border p-2 rounded">
+                                </div>
+                                <div>
+                                    <label class="block text-xs font-medium text-gray-600">End Time</label>
+                                    <input v-model="newProfile.curfew_end" type="time" class="mt-1 w-full border p-2 rounded">
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-span-1 md:col-span-2 flex items-center mt-2">
+                            <input v-model="newProfile.audit_only" type="checkbox" id="auditOnly" class="h-4 w-4 text-blue-600 border-gray-300 rounded">
+                            <label for="auditOnly" class="ml-2 block text-sm text-gray-900 font-medium">Audit Only (Do not enforce blocks in UniFi)</label>
+                        </div>
                     </div>
                     <div class="flex gap-2">
                         <button @click="createProfile" class="bg-green-500 hover:bg-green-700 text-white py-1 px-4 rounded">Save</button>
@@ -131,29 +168,69 @@
                 <div v-for="prof in profiles" :key="prof.id" class="bg-white shadow rounded-lg p-6 mb-4">
                     <div class="flex justify-between items-start mb-4">
                         <div>
-                            <h3 class="text-lg font-bold">{{ prof.name }}</h3>
+                            <h3 class="text-lg font-bold flex items-center gap-2">
+                                {{ prof.name }}
+                                <span v-if="prof.audit_only" class="bg-purple-100 text-purple-800 text-xs font-semibold px-2 py-1 rounded">AUDIT MODE</span>
+                            </h3>
                             <p class="text-sm text-gray-500">IP: {{ prof.ip_address }} | MAC: {{ prof.mac_address }}</p>
                             <p class="text-sm text-gray-500" v-if="prof.curfew_start">Curfew: {{ prof.curfew_start }} to {{ prof.curfew_end }}</p>
                         </div>
                         <button @click="deleteProfile(prof.id)" class="text-red-500 hover:text-red-700">Delete</button>
                     </div>
 
-                    <h4 class="font-semibold text-sm mb-2 text-gray-700">Quotas & Limits</h4>
-                    <ul class="mb-4">
-                        <li v-for="quota in prof.quotas" :key="quota.id" class="text-sm flex justify-between border-b py-1">
-                            <span>Category ID: {{ quota.category_id }} ({{ quota.daily_limit_minutes }} mins) -> Rule ID: {{ quota.traffic_rule_id || 'N/A' }}</span>
-                            <button @click="deleteQuota(quota.id)" class="text-red-400 text-xs">Remove</button>
-                        </li>
-                    </ul>
+                    <h4 class="font-semibold text-sm mb-2 text-gray-700 uppercase tracking-wider">Quotas & Limits</h4>
+                    
+                    <div class="overflow-x-auto mb-4 border rounded-lg" v-if="prof.quotas && prof.quotas.length > 0">
+                        <table class="min-w-full divide-y divide-gray-200">
+                            <thead class="bg-gray-50">
+                                <tr>
+                                    <th scope="col" class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Category</th>
+                                    <th scope="col" class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Daily Limit</th>
+                                    <th scope="col" class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">UniFi Rule ID</th>
+                                    <th scope="col" class="px-4 py-2 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody class="bg-white divide-y divide-gray-200">
+                                <li v-for="quota in prof.quotas" :key="quota.id" class="hidden"></li> <!-- Vue Key Hack -->
+                                <tr v-for="quota in prof.quotas" :key="'tr-'+quota.id">
+                                    <td class="px-4 py-2 whitespace-nowrap text-sm font-medium text-gray-900">
+                                        {{ categories.find(c => c.id === quota.category_id)?.name || 'Unknown' }}
+                                    </td>
+                                    <td class="px-4 py-2 whitespace-nowrap text-sm text-gray-500">
+                                        {{ quota.daily_limit_minutes }} mins
+                                    </td>
+                                    <td class="px-4 py-2 whitespace-nowrap text-sm text-gray-700">
+                                        <div v-if="quota.traffic_rule_id" class="flex flex-col gap-1">
+                                            <span class="font-semibold">{{ getRuleName(quota.traffic_rule_id) }}</span>
+                                            <span v-if="getRuleStatus(quota.traffic_rule_id)" class="text-[10px] uppercase font-bold tracking-wider bg-red-100 text-red-800 px-2 py-0.5 rounded-full border border-red-200 w-max">Blocked</span>
+                                            <span v-else class="text-[10px] uppercase font-bold tracking-wider bg-green-100 text-green-800 px-2 py-0.5 rounded-full border border-green-200 w-max">Unblocked</span>
+                                        </div>
+                                        <span v-else class="text-gray-400">N/A</span>
+                                    </td>
+                                    <td class="px-4 py-2 whitespace-nowrap text-sm font-medium text-center">
+                                        <div class="flex justify-center space-x-2">
+                                            <button @click="toggleQuotaRule(quota.id, true)" title="Test Block Rule" class="text-white bg-orange-500 hover:bg-orange-600 px-2 py-1 rounded text-xs font-semibold">Block</button>
+                                            <button @click="toggleQuotaRule(quota.id, false)" title="Test Unblock Rule" class="text-white bg-green-500 hover:bg-green-600 px-2 py-1 rounded text-xs font-semibold">Unblock</button>
+                                            <button @click="deleteQuota(quota.id)" class="text-white bg-red-500 hover:bg-red-600 px-2 py-1 rounded text-xs font-semibold">Delete</button>
+                                        </div>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                    <div v-else class="text-sm text-gray-400 italic mb-4">No limits configured for this profile.</div>
 
-                    <div class="flex items-center gap-2 mt-2">
-                        <select v-model="newQuota[prof.id].category_id" class="border p-1 text-sm rounded">
-                            <option value="" disabled selected>Select Category</option>
+                    <div class="bg-gray-50 p-3 rounded-lg border flex flex-wrap items-center gap-2 mt-2">
+                        <select v-model="newQuota[prof.id].category_id" class="border border-gray-300 p-2 text-sm rounded shadow-sm flex-grow min-w-[150px]">
+                            <option value="" disabled selected>Select Category...</option>
                             <option v-for="cat in categories" :value="cat.id" :key="cat.id">{{ cat.name }}</option>
                         </select>
-                        <input v-model.number="newQuota[prof.id].daily_limit_minutes" type="number" placeholder="Mins/day" class="border p-1 w-24 text-sm rounded">
-                        <input v-model="newQuota[prof.id].traffic_rule_id" placeholder="UniFi Traffic Rule ID" class="border p-1 text-sm rounded">
-                        <button @click="addQuota(prof.id)" class="bg-blue-100 hover:bg-blue-200 text-blue-800 px-2 py-1 rounded text-sm font-semibold">Add Limit</button>
+                        <input v-model.number="newQuota[prof.id].daily_limit_minutes" type="number" placeholder="Minutes/day" class="border border-gray-300 p-2 w-28 text-sm rounded shadow-sm">
+                        <select v-model="newQuota[prof.id].traffic_rule_id" class="border border-gray-300 p-2 text-sm rounded shadow-sm flex-grow min-w-[180px]">
+                            <option value="" disabled selected>Select UniFi Traffic Rule...</option>
+                            <option v-for="r in unifiRules" :value="r.id" :key="r.id">{{ r.description }}</option>
+                        </select>
+                        <button @click="addQuota(prof.id)" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded text-sm font-bold shadow-sm whitespace-nowrap">Add Limit</button>
                     </div>
                 </div>
             </div>
@@ -190,6 +267,9 @@
                                     <input v-model="settings.unifi_password" type="password" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2">
                                 </div>
                             </div>
+                            <button type="button" @click="testUnifi" class="mt-2 w-full flex justify-center py-1 px-4 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-gray-50 hover:bg-gray-100 focus:outline-none">
+                                Test UniFi Connection
+                            </button>
                             <hr class="my-4">
                             <div>
                                 <label class="block text-sm font-medium text-gray-700">Pi-hole 1 API URL</label>
@@ -207,8 +287,15 @@
                                 <label class="block text-sm font-medium text-gray-700">Pi-hole 2 API Key (Optional)</label>
                                 <input v-model="settings.pihole_api_key_2" type="password" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2">
                             </div>
+                            <button type="button" @click="testPihole" class="mt-2 w-full flex justify-center py-1 px-4 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-gray-50 hover:bg-gray-100 focus:outline-none">
+                                Test Pi-hole Connection
+                            </button>
                             <button type="submit" class="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none">
                                 Save Settings
+                            </button>
+                            <hr class="my-4">
+                            <button type="button" @click="wipeUsageHistory" class="w-full flex justify-center py-2 px-4 border border-red-300 rounded-md shadow-sm text-sm font-medium text-red-700 bg-red-50 hover:bg-red-100 focus:outline-none">
+                                Wipe All Usage History (Fixes Corrupted Dates)
                             </button>
                         </form>
                     </div>
@@ -257,11 +344,13 @@
                     profiles: [],
                     dashboard: [],
                     logs: [],
+                    unifiClients: [],
+                    unifiRules: [],
 
                     showAddProfile: false,
                     newProfile: {
                         name: '', ip_address: '', mac_address: '',
-                        curfew_start: '', curfew_end: '', curfew_enforcement: 'station_block'
+                        curfew_start: '', curfew_end: '', curfew_enforcement: 'station_block', audit_only: false
                     },
                     newCategory: { name: '', domains: '' },
                     newQuota: {} // Bound dynamically by profile ID
@@ -285,6 +374,8 @@
                         await this.fetchProfiles();
                         await this.fetchDashboard();
                         await this.fetchLogs();
+                        await this.fetchUnifiClients();
+                        await this.fetchUnifiRules();
                     } catch (e) {
                         if(e.response && e.response.status === 401) {
                             window.location.reload(); // Prompt browser basic auth again
@@ -305,6 +396,18 @@
                     await axios.put('/api/settings', this.settings);
                     alert("Settings saved!");
                 },
+                async wipeUsageHistory() {
+                    if(confirm("Are you sure you want to permanently delete all usage history from the database?")) {
+                        try {
+                            await axios.post('/api/database/wipe-usage');
+                            alert("Database wiped successfully!");
+                            await this.fetchDashboard();
+                            await this.fetchLogs();
+                        } catch (e) {
+                            alert("Failed to wipe database: " + e.message);
+                        }
+                    }
+                },
                 async fetchCategories() {
                     const res = await axios.get('/api/categories');
                     this.categories = res.data;
@@ -318,6 +421,30 @@
                     if(confirm("Delete category?")) {
                         await axios.delete(`/api/categories/${id}`);
                         this.fetchCategories();
+                    }
+                },
+                async fetchUnifiClients() {
+                    try {
+                        const res = await axios.get('/api/unifi/clients');
+                        this.unifiClients = res.data;
+                    } catch (e) {
+                        console.error("Could not fetch UniFi clients", e);
+                    }
+                },
+                async fetchUnifiRules() {
+                    try {
+                        const res = await axios.get('/api/unifi/rules');
+                        this.unifiRules = res.data;
+                    } catch(e) {
+                        console.warn("Could not fetch UniFi rules", e);
+                    }
+                },
+                autoFillProfile(mac) {
+                    const client = this.unifiClients.find(c => c.mac === mac);
+                    if (client) {
+                        this.newProfile.name = client.name || '';
+                        this.newProfile.ip_address = client.ip || '';
+                        this.newProfile.mac_address = client.mac || '';
                     }
                 },
                 async fetchProfiles() {
@@ -338,7 +465,7 @@
 
                     await axios.post('/api/profiles', payload);
                     this.showAddProfile = false;
-                    this.newProfile = { name: '', ip_address: '', mac_address: '', curfew_start: '', curfew_end: '', curfew_enforcement: 'station_block' };
+                    this.newProfile = { name: '', ip_address: '', mac_address: '', curfew_start: '', curfew_end: '', curfew_enforcement: 'station_block', audit_only: false };
                     this.fetchProfiles();
                 },
                 async deleteProfile(id) {
@@ -359,6 +486,23 @@
                         this.fetchProfiles();
                     }
                 },
+                async toggleQuotaRule(id, enabled) {
+                    try {
+                        const res = await axios.post(`/api/quotas/${id}/toggle`, { enabled });
+                        alert(res.data.message);
+                        await this.fetchUnifiRules(); // Refresh rule status
+                    } catch (e) {
+                        alert(e.response?.data?.detail || "Failed to toggle rule.");
+                    }
+                },
+                getRuleName(ruleId) {
+                    const rule = this.unifiRules.find(r => r.id === ruleId);
+                    return rule ? rule.description : ruleId;
+                },
+                getRuleStatus(ruleId) {
+                    const rule = this.unifiRules.find(r => r.id === ruleId);
+                    return rule ? rule.enabled : false;
+                },
                 async fetchDashboard() {
                     const res = await axios.get('/api/dashboard');
                     this.dashboard = res.data;
@@ -373,10 +517,32 @@
                         this.fetchDashboard();
                     }
                 },
+                async addBonus(prof_id, cat_id, minutes) {
+                    if(confirm(`Add ${minutes} minutes bonus time for today?`)) {
+                        await axios.post(`/api/overrides/add-bonus/${prof_id}/${cat_id}/${minutes}`);
+                        this.fetchDashboard();
+                    }
+                },
                 async unblockStation(prof_id) {
                     if(confirm("Lift station block?")) {
                         await axios.post(`/api/overrides/unblock-station/${prof_id}`);
                         this.fetchDashboard();
+                    }
+                },
+                async testUnifi() {
+                    try {
+                        const res = await axios.post('/api/test-connection/unifi');
+                        alert(res.data.message);
+                    } catch (e) {
+                        alert(e.response?.data?.detail || "Connection failed");
+                    }
+                },
+                async testPihole() {
+                    try {
+                        const res = await axios.post('/api/test-connection/pihole');
+                        alert(res.data.message);
+                    } catch (e) {
+                        alert(e.response?.data?.detail || "Connection failed");
                     }
                 }
             }
