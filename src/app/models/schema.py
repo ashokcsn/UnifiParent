@@ -64,6 +64,18 @@ class DailyUsage(Base):
     profile = relationship("Profile", back_populates="daily_usage")
     category = relationship("Category")
 
+class HourlyUsage(Base):
+    __tablename__ = "hourly_usage"
+    id = Column(Integer, primary_key=True, index=True)
+    date = Column(String, index=True) # Format: YYYY-MM-DD
+    hour = Column(Integer, index=True) # 0-23
+    profile_id = Column(Integer, ForeignKey("profiles.id"))
+    category_id = Column(Integer, ForeignKey("categories.id"))
+    active_minutes = Column(Integer, default=0)
+
+    profile = relationship("Profile")
+    category = relationship("Category")
+
 class AuditLog(Base):
     __tablename__ = "audit_log"
     id = Column(Integer, primary_key=True, index=True)

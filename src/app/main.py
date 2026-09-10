@@ -26,7 +26,9 @@ async def lifespan(app: FastAPI):
     except asyncio.CancelledError:
         pass
 
-app = FastAPI(title="Hybrid Parental Control", lifespan=lifespan)
+app = FastAPI(title="UniFi Parent", lifespan=lifespan)
+
+app.mount("/static", StaticFiles(directory="app/static"), name="static")
 
 app.include_router(router)
 

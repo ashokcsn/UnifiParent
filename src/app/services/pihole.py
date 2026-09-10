@@ -96,7 +96,7 @@ async def process_pihole_telemetry(db_session, start_epoch: int, end_epoch: int)
     """
     Polls configured Pi-holes and calculates active usage minutes for each profile.
     """
-    from ..models.schema import SystemSettings, Profile, Category, ProfileQuota, DailyUsage
+    from ..models.schema import SystemSettings, Profile, Category, ProfileQuota, DailyUsage, HourlyUsage
     from sqlalchemy.future import select
 
     # 1. Fetch system settings
@@ -190,7 +190,7 @@ async def process_pihole_telemetry(db_session, start_epoch: int, end_epoch: int)
 
             active_minutes_tracker[profile.id][matched_cat_id].add(minute_epoch)
 
-    # 5. Update DailyUsage in database
+    # 5. Update DailyUsage and HourlyUsage in database
     today_str = datetime.now().strftime("%Y-%m-%d") # Use current date for usage
 
     for profile_id, category_tracker in active_minutes_tracker.items():
@@ -218,6 +218,37 @@ async def process_pihole_telemetry(db_session, start_epoch: int, end_epoch: int)
                         is_blocked=False
                     )
                     db_session.add(new_usage)
+                
+                # Group by hour and update HourlyUsage
+                hour_tracker = {}
+                for minute_epoch in minutes_set:
+                    dt = datetime.fromtimestamp(minute_epoch * 60)
+                    h = dt.hour
+                    d_str = dt.strftime("%Y-%m-%d")
+                    key = (d_str, h)
+                    hour_tracker[key] = hour_tracker.get(key, 0) + 1
+                
+                for (d_str, h), mins in hour_tracker.items():
+                    hr_result = await db_session.execute(
+                        select(HourlyUsage)
+                        .where(HourlyUsage.profile_id == profile_id)
+                        .where(HourlyUsage.category_id == category_id)
+                        .where(HourlyUsage.date == d_str)
+                        .where(HourlyUsage.hour == h)
+                    )
+                    hr_record = hr_result.scalars().first()
+                    
+                    if hr_record:
+                        hr_record.active_minutes += mins
+                    else:
+                        new_hr_usage = HourlyUsage(
+                            date=d_str,
+                            hour=h,
+                            profile_id=profile_id,
+                            category_id=category_id,
+                            active_minutes=mins
+                        )
+                        db_session.add(new_hr_usage)
 
     if active_minutes_tracker:
         await db_session.commit()

@@ -128,6 +128,21 @@ async def check_quotas_and_enforce():
                         usage.is_blocked = True
                         log = AuditLog(profile_id=profile.id, action="BLOCK", target=f"Category {quota.category_id}", reason="Quota exceeded")
                         db.add(log)
+                        
+                        if quota.enforcement == "traffic_rule" and quota.traffic_rule_id:
+                            shared_quotas_result = await db.execute(select(ProfileQuota).where(ProfileQuota.traffic_rule_id == quota.traffic_rule_id))
+                            shared_quotas = shared_quotas_result.scalars().all()
+                            for sq in shared_quotas:
+                                if sq.profile_id != profile.id or sq.category_id != quota.category_id:
+                                    sq_usage_result = await db.execute(
+                                        select(DailyUsage)
+                                        .where(DailyUsage.profile_id == sq.profile_id)
+                                        .where(DailyUsage.category_id == sq.category_id)
+                                        .where(DailyUsage.date == today_str)
+                                    )
+                                    sq_usage = sq_usage_result.scalars().first()
+                                    if sq_usage:
+                                        sq_usage.is_blocked = True
 
         if unifi_logged_in:
             await unifi.close()
@@ -137,9 +152,24 @@ async def check_quotas_and_enforce():
 async def midnight_reset():
     """
     Runs daily to reset all active blocks (traffic rules and station blocks).
-    Usage records naturally reset because the date string changes.
+    Also garbage collects usage data older than 30 days.
     """
+    from sqlalchemy import delete
     async with async_session() as db:
+        # Garbage collection
+        thirty_days_ago = (datetime.now() - timedelta(days=30)).strftime("%Y-%m-%d")
+        
+        try:
+            await db.execute(delete(DailyUsage).where(DailyUsage.date < thirty_days_ago))
+            
+            # Since we just added HourlyUsage, it might not be imported. We need to import it at top or here.
+            # wait, it is imported at the top? I will just import it here to be safe.
+            from ..models.schema import HourlyUsage
+            await db.execute(delete(HourlyUsage).where(HourlyUsage.date < thirty_days_ago))
+            logger.info("Garbage collected usage data older than 30 days")
+        except Exception as e:
+            logger.error(f"Failed to garbage collect: {e}")
+
         profiles_result = await db.execute(select(Profile))
         profiles = profiles_result.scalars().all()
 

@@ -83,6 +83,19 @@ async def create_profile(prof_in: ProfileCreate, db: AsyncSession = Depends(get_
     prof_with_quotas = result.scalars().first()
     return prof_with_quotas
 
+@router.put("/profiles/{prof_id}", response_model=ProfileResponse)
+async def update_profile(prof_id: int, prof_in: ProfileCreate, db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(Profile).options(selectinload(Profile.quotas)).where(Profile.id == prof_id))
+    prof = result.scalars().first()
+    if not prof:
+        raise HTTPException(status_code=404, detail="Not found")
+    
+    for k, v in prof_in.model_dump().items():
+        setattr(prof, k, v)
+        
+    await db.commit()
+    return prof
+
 @router.delete("/profiles/{prof_id}")
 async def delete_profile(prof_id: int, db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(Profile).where(Profile.id == prof_id))
@@ -101,6 +114,22 @@ async def add_quota(prof_id: int, quota_in: ProfileQuotaCreate, db: AsyncSession
     await db.commit()
     # Return updated profile
     result = await db.execute(select(Profile).options(selectinload(Profile.quotas)).where(Profile.id == prof_id))
+    prof = result.scalars().first()
+    return prof
+
+@router.put("/quotas/{quota_id}", response_model=ProfileResponse)
+async def update_quota(quota_id: int, quota_in: ProfileQuotaCreate, db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(ProfileQuota).where(ProfileQuota.id == quota_id))
+    quota = result.scalars().first()
+    if not quota:
+        raise HTTPException(status_code=404, detail="Not found")
+    
+    for k, v in quota_in.model_dump().items():
+        setattr(quota, k, v)
+        
+    await db.commit()
+    # Return updated profile
+    result = await db.execute(select(Profile).options(selectinload(Profile.quotas)).where(Profile.id == quota.profile_id))
     prof = result.scalars().first()
     return prof
 
@@ -140,6 +169,36 @@ async def toggle_quota_rule(quota_id: int, payload: QuotaToggle, db: AsyncSessio
     await unifi.close()
     
     if success:
+        # Sync the block state to all DailyUsage records that share this traffic rule ID for today
+        today_str = datetime.now().strftime("%Y-%m-%d")
+        
+        # Find all quotas sharing this rule
+        shared_quotas_result = await db.execute(select(ProfileQuota).where(ProfileQuota.traffic_rule_id == quota.traffic_rule_id))
+        shared_quotas = shared_quotas_result.scalars().all()
+        
+        for sq in shared_quotas:
+            # Update their daily usage for today
+            usage_result = await db.execute(
+                select(DailyUsage)
+                .where(DailyUsage.profile_id == sq.profile_id)
+                .where(DailyUsage.category_id == sq.category_id)
+                .where(DailyUsage.date == today_str)
+            )
+            usage = usage_result.scalars().first()
+            if usage:
+                usage.is_blocked = payload.enabled
+            else:
+                # If usage doesn't exist yet, we create it to track the block state
+                new_usage = DailyUsage(
+                    profile_id=sq.profile_id,
+                    category_id=sq.category_id,
+                    date=today_str,
+                    active_minutes=0,
+                    is_blocked=payload.enabled
+                )
+                db.add(new_usage)
+                
+        await db.commit()
         return {"status": "success", "message": f"Rule turned {'ON (Blocked)' if payload.enabled else 'OFF (Unblocked)'}"}
     else:
         raise HTTPException(status_code=500, detail="Failed to toggle UniFi traffic rule. Check Rule ID and connection.")
@@ -171,6 +230,7 @@ async def get_dashboard(db: AsyncSession = Depends(get_db)):
             dashboard_data.append(DashboardUsage(
                 profile_id=prof.id,
                 profile_name=prof.name,
+                profile_is_blocked=prof.is_blocked,
                 category_id=quota.category_id,
                 category_name=categories.get(quota.category_id, "Unknown"),
                 active_minutes=usage.active_minutes if usage else 0,
@@ -184,6 +244,47 @@ async def get_dashboard(db: AsyncSession = Depends(get_db)):
 async def get_logs(limit: int = 50, db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(AuditLog).order_by(AuditLog.timestamp.desc()).limit(limit))
     return result.scalars().all()
+
+@router.get("/usage/{profile_id}/{category_id}")
+async def get_usage_charts(profile_id: int, category_id: int, db: AsyncSession = Depends(get_db)):
+    from ..models.schema import HourlyUsage
+    from datetime import timedelta
+    
+    today_str = datetime.now().strftime("%Y-%m-%d")
+    thirty_days_ago = (datetime.now() - timedelta(days=30)).strftime("%Y-%m-%d")
+    
+    # Intraday (Today)
+    hourly_result = await db.execute(
+        select(HourlyUsage)
+        .where(HourlyUsage.profile_id == profile_id)
+        .where(HourlyUsage.category_id == category_id)
+        .where(HourlyUsage.date == today_str)
+        .order_by(HourlyUsage.hour.asc())
+    )
+    hourly_records = hourly_result.scalars().all()
+    today_hourly = {hr.hour: hr.active_minutes for hr in hourly_records}
+    
+    # Format intraday for 0-23
+    intraday = [{"hour": h, "minutes": today_hourly.get(h, 0)} for h in range(24)]
+    
+    # Historical (Last 30 Days)
+    daily_result = await db.execute(
+        select(DailyUsage)
+        .where(DailyUsage.profile_id == profile_id)
+        .where(DailyUsage.category_id == category_id)
+        .where(DailyUsage.date >= thirty_days_ago)
+        .order_by(DailyUsage.date.asc())
+    )
+    daily_records = daily_result.scalars().all()
+    
+    # Build historical from the actual date range to ensure 0s for missing days
+    historical = []
+    for i in range(30):
+        d = (datetime.now() - timedelta(days=29 - i)).strftime("%Y-%m-%d")
+        record = next((r for r in daily_records if r.date == d), None)
+        historical.append({"date": d, "minutes": record.active_minutes if record else 0})
+        
+    return {"intraday": intraday, "historical": historical}
 
 # --- Manual Overrides ---
 @router.post("/overrides/unblock-station/{prof_id}")
@@ -204,6 +305,27 @@ async def manual_unblock_station(prof_id: int, db: AsyncSession = Depends(get_db
     if settings and settings.unifi_host:
         unifi = UnifiClient(settings.unifi_host, settings.unifi_port, settings.unifi_username, settings.unifi_password, settings.unifi_site)
         await unifi.unblock_station(prof.mac_address)
+        await unifi.close()
+
+    await db.commit()
+    return {"status": "success"}
+
+@router.post("/overrides/block-station/{prof_id}")
+async def manual_block_station(prof_id: int, db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(Profile).where(Profile.id == prof_id))
+    prof = result.scalars().first()
+    if not prof:
+        raise HTTPException(404, "Profile not found")
+
+    prof.is_blocked = True
+    log = AuditLog(profile_id=prof.id, action="BLOCK", target="STATION", reason="Manual Override")
+    db.add(log)
+
+    settings_result = await db.execute(select(SystemSettings).limit(1))
+    settings = settings_result.scalars().first()
+    if settings and settings.unifi_host:
+        unifi = UnifiClient(settings.unifi_host, settings.unifi_port, settings.unifi_username, settings.unifi_password, settings.unifi_site)
+        await unifi.block_station(prof.mac_address)
         await unifi.close()
 
     await db.commit()
@@ -236,6 +358,21 @@ async def reset_usage(prof_id: int, cat_id: int, db: AsyncSession = Depends(get_
                 unifi = UnifiClient(settings.unifi_host, settings.unifi_port, settings.unifi_username, settings.unifi_password, settings.unifi_site)
                 await unifi.set_traffic_rule(quota.traffic_rule_id, enabled=False)
                 await unifi.close()
+                
+                # Sync the unblock state to all other DailyUsage records sharing this rule
+                shared_quotas_result = await db.execute(select(ProfileQuota).where(ProfileQuota.traffic_rule_id == quota.traffic_rule_id))
+                shared_quotas = shared_quotas_result.scalars().all()
+                for sq in shared_quotas:
+                    if sq.profile_id != prof_id or sq.category_id != cat_id:
+                        sq_usage_result = await db.execute(
+                            select(DailyUsage)
+                            .where(DailyUsage.profile_id == sq.profile_id)
+                            .where(DailyUsage.category_id == sq.category_id)
+                            .where(DailyUsage.date == today_str)
+                        )
+                        sq_usage = sq_usage_result.scalars().first()
+                        if sq_usage:
+                            sq_usage.is_blocked = False
 
         await db.commit()
 
@@ -274,6 +411,21 @@ async def add_bonus(prof_id: int, cat_id: int, minutes: int, db: AsyncSession = 
                     unifi = UnifiClient(settings.unifi_host, settings.unifi_port, settings.unifi_username, settings.unifi_password, settings.unifi_site)
                     await unifi.set_traffic_rule(quota.traffic_rule_id, enabled=False)
                     await unifi.close()
+                    
+                    # Sync the unblock state to all other DailyUsage records sharing this rule
+                    shared_quotas_result = await db.execute(select(ProfileQuota).where(ProfileQuota.traffic_rule_id == quota.traffic_rule_id))
+                    shared_quotas = shared_quotas_result.scalars().all()
+                    for sq in shared_quotas:
+                        if sq.profile_id != prof_id or sq.category_id != cat_id:
+                            sq_usage_result = await db.execute(
+                                select(DailyUsage)
+                                .where(DailyUsage.profile_id == sq.profile_id)
+                                .where(DailyUsage.category_id == sq.category_id)
+                                .where(DailyUsage.date == today_str)
+                            )
+                            sq_usage = sq_usage_result.scalars().first()
+                            if sq_usage:
+                                sq_usage.is_blocked = False
             elif quota.enforcement == "station_block":
                 # We need the profile MAC to unblock station
                 prof_result = await db.execute(select(Profile).where(Profile.id == prof_id))

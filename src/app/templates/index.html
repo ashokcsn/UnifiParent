@@ -3,37 +3,91 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Hybrid Parental Control</title>
+    <title>UniFi Parent</title>
+    <link rel="icon" type="image/png" href="/static/favicon.png">
     <!-- Tailwind CSS via CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class'
+        }
+    </script>
     <!-- Vue 3 via CDN -->
     <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
     <!-- Axios -->
     <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <style>
         [v-cloak] { display: none; }
+        body { font-family: 'Inter', sans-serif; }
     </style>
 </head>
-<body class="bg-gray-100 font-sans text-gray-800">
-    <div id="app" v-cloak class="min-h-screen flex flex-col">
+<body class="bg-gray-100 dark:bg-[#0a0a0f] text-gray-800 dark:text-gray-100 transition-colors duration-200">
+    <div id="app" v-cloak class="min-h-screen flex">
 
-        <!-- Header / Nav -->
-        <header class="bg-blue-600 text-white shadow-md">
+        <!-- Mobile Header -->
+        <header class="md:hidden fixed top-0 w-full h-16 bg-[#1a1a24] dark:bg-[#121319] text-white flex items-center justify-between px-4 z-40 border-b border-gray-800">
+            <div class="flex items-center gap-3">
+                <img src="/static/favicon.png" alt="Logo" class="w-8 h-8 rounded-md bg-white p-0.5 shadow-sm">
+                <h1 class="text-lg font-semibold tracking-wide">UniFi Parent</h1>
+            </div>
+            <button @click="isSidebarCollapsed = !isSidebarCollapsed" class="text-gray-400 hover:text-white focus:outline-none">
+                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path></svg>
+            </button>
+        </header>
+
+        <!-- Sidebar Backdrop (Mobile only) -->
+        <div v-if="!isSidebarCollapsed" @click="isSidebarCollapsed = true" class="fixed inset-0 bg-black/60 z-40 md:hidden"></div>
+
+        <!-- Sidebar / Nav -->
+        <aside :class="[
+            isSidebarCollapsed ? '-translate-x-full md:translate-x-0 md:w-16' : 'translate-x-0 w-64',
+            'fixed md:sticky top-0 inset-y-0 left-0 h-full md:h-screen'
+        ]" class="bg-[#1a1a24] dark:bg-[#121319] text-gray-300 shadow-xl flex flex-col flex-shrink-0 border-r border-gray-800 transition-all duration-300 z-50 overflow-hidden">
 {% raw %}
-            <div class="container mx-auto px-4 py-4 flex justify-between items-center">
-                <h1 class="text-2xl font-bold">Parental Control Dashboard</h1>
-                <nav>
-                    <button @click="currentView = 'dashboard'" :class="{'font-bold border-b-2 border-white': currentView === 'dashboard'}" class="mx-2 hover:text-blue-200">Dashboard</button>
-                    <button @click="currentView = 'profiles'" :class="{'font-bold border-b-2 border-white': currentView === 'profiles'}" class="mx-2 hover:text-blue-200">Profiles</button>
-                    <button @click="currentView = 'settings'" :class="{'font-bold border-b-2 border-white': currentView === 'settings'}" class="mx-2 hover:text-blue-200">Settings</button>
-                    <button @click="logout" class="mx-2 ml-6 bg-blue-700 hover:bg-blue-800 px-3 py-1 rounded text-sm">Logout</button>
-                </nav>
+            <div class="px-4 py-4 flex items-center justify-between border-b border-gray-800 h-16">
+                <div class="flex items-center gap-3 overflow-hidden" v-show="!isSidebarCollapsed">
+                    <img src="/static/favicon.png" alt="Logo" class="w-8 h-8 rounded-md bg-white p-0.5 shadow-sm shrink-0">
+                    <h1 class="text-lg font-semibold text-white tracking-wide truncate">UniFi Parent</h1>
+                </div>
+                <button @click="isSidebarCollapsed = !isSidebarCollapsed" class="text-gray-400 hover:text-white shrink-0 p-1 rounded-md hover:bg-gray-800 focus:outline-none transition-colors" :class="{'mx-auto': isSidebarCollapsed}">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path></svg>
+                </button>
+            </div>
+            <nav class="flex flex-col gap-2 px-3 mt-4 flex-grow overflow-x-hidden">
+                <button @click="switchView('dashboard')" :class="{'bg-[#005cff] text-white shadow': currentView === 'dashboard', 'hover:bg-gray-800 hover:text-white': currentView !== 'dashboard'}" class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors whitespace-nowrap" :title="isSidebarCollapsed ? 'Dashboard' : ''">
+                    <svg class="w-5 h-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"></path></svg>
+                    <span v-show="!isSidebarCollapsed">Dashboard</span>
+                </button>
+                <button @click="switchView('profiles')" :class="{'bg-[#005cff] text-white shadow': currentView === 'profiles', 'hover:bg-gray-800 hover:text-white': currentView !== 'profiles'}" class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors whitespace-nowrap" :title="isSidebarCollapsed ? 'Devices' : ''">
+                    <svg class="w-5 h-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z"></path></svg>
+                    <span v-show="!isSidebarCollapsed">Devices</span>
+                </button>
+                <button @click="switchView('settings')" :class="{'bg-[#005cff] text-white shadow': currentView === 'settings', 'hover:bg-gray-800 hover:text-white': currentView !== 'settings'}" class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors whitespace-nowrap" :title="isSidebarCollapsed ? 'Settings' : ''">
+                    <svg class="w-5 h-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
+                    <span v-show="!isSidebarCollapsed">Settings</span>
+                </button>
+            </nav>
+            <div class="px-3 py-4 flex flex-col gap-2 mt-auto border-t border-gray-800 overflow-hidden">
+                <button @click="toggleDarkMode(); if(window.innerWidth < 768) isSidebarCollapsed = true;" class="text-gray-400 hover:text-white hover:bg-gray-800 px-3 py-2 rounded-lg text-sm flex items-center gap-3 transition-colors" :class="{'justify-center': isSidebarCollapsed}" :title="isSidebarCollapsed ? 'Toggle Theme' : ''">
+                    <span v-if="isSidebarCollapsed" class="text-lg">{{ isDarkMode ? '🌞' : '🌙' }}</span>
+                    <span v-else class="whitespace-nowrap">{{ isDarkMode ? '🌞 Light Mode' : '🌙 Dark Mode' }}</span>
+                </button>
+                <button @click="logout" class="text-gray-400 hover:text-white hover:bg-gray-800 px-3 py-2 rounded-lg text-sm font-medium flex items-center gap-3 transition-colors" :class="{'justify-center': isSidebarCollapsed}" :title="isSidebarCollapsed ? 'Logout' : ''">
+                    <svg class="w-5 h-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"></path></svg>
+                    <span v-show="!isSidebarCollapsed">Logout</span>
+                </button>
             </div>
         {% endraw %}
-</header>
+        </aside>
 
         <!-- Main Content -->
-        <main class="flex-grow container mx-auto px-4 py-8">
+        <main class="flex-grow container mx-auto px-4 py-8 overflow-y-auto min-h-screen mt-16 md:mt-0">
 {% raw %}
 
             <!-- Dashboard View -->
@@ -45,81 +99,111 @@
                 </div>
 
                 <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                    <div v-for="item in dashboard" :key="item.profile_id + '-' + item.category_id" class="bg-white rounded-lg shadow p-5 border-l-4" :class="item.is_blocked ? 'border-red-500' : 'border-green-500'">
-                        <div class="flex justify-between items-start mb-2">
-                            <h3 class="font-bold text-lg">{{ item.profile_name }}</h3>
-                            <span v-if="item.is_blocked" class="bg-red-100 text-red-800 text-xs font-semibold px-2 py-1 rounded">BLOCKED</span>
-                            <span v-else class="bg-green-100 text-green-800 text-xs font-semibold px-2 py-1 rounded">ACTIVE</span>
-                        </div>
-                        <p class="text-gray-600 text-sm mb-4">Category: <span class="font-semibold">{{ item.category_name }}</span></p>
-
-                        <!-- Progress Bar -->
-                        <div class="w-full bg-gray-200 rounded-full h-4 mb-2">
-                            <div class="h-4 rounded-full"
-                                 :class="{'bg-red-500': item.is_blocked, 'bg-blue-500': !item.is_blocked && (item.active_minutes/item.limit_minutes) < 0.8, 'bg-yellow-500': !item.is_blocked && (item.active_minutes/item.limit_minutes) >= 0.8}"
-                                 :style="'width: ' + Math.min((item.active_minutes / item.limit_minutes) * 100, 100) + '%'"></div>
-                        </div>
-                        <div class="flex justify-between text-sm text-gray-500 mb-4">
-                            <span>{{ item.active_minutes }} mins used</span>
-                            <span>{{ item.limit_minutes }} mins limit</span>
-                        </div>
-
-                        <div class="flex flex-wrap gap-2">
-                            <button @click="resetUsage(item.profile_id, item.category_id)" class="text-xs bg-gray-100 hover:bg-gray-200 text-gray-800 font-semibold py-1 px-3 border border-gray-400 rounded shadow">
-                                Reset Usage
+                    <div v-for="group in groupedDashboard" :key="group.profile_id" 
+                         class="bg-white dark:bg-[#1a1a24] rounded-xl shadow-sm border border-gray-200 dark:border-gray-800 p-5 hover:shadow-md transition-shadow">
+                        <div class="flex justify-between items-center mb-4 border-b border-gray-100 dark:border-gray-800 pb-3">
+                            <h3 class="font-bold text-lg text-gray-900 dark:text-white flex items-center gap-2">
+                                <svg class="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z"></path></svg>
+                                {{ group.profile_name }}
+                            </h3>
+                            <button v-if="!group.is_blocked" @click.stop="blockStation(group.profile_id)" class="text-xs bg-orange-100 dark:bg-orange-900/30 hover:bg-orange-200 dark:hover:bg-orange-800/50 text-orange-700 dark:text-orange-400 font-semibold py-1.5 px-3 border border-orange-200 dark:border-orange-800/50 rounded-lg shadow-sm transition-colors">
+                                Block Device
                             </button>
-                            <button @click="addBonus(item.profile_id, item.category_id, 15)" class="text-xs bg-green-100 hover:bg-green-200 text-green-800 font-semibold py-1 px-3 border border-green-400 rounded shadow">
-                                +15m Bonus
+                            <button v-else @click.stop="unblockStation(group.profile_id)" class="text-xs bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 font-semibold py-1.5 px-3 border border-gray-200 dark:border-gray-700 rounded-lg shadow-sm transition-colors">
+                                Unblock Device
                             </button>
-                            <button @click="unblockStation(item.profile_id)" class="text-xs bg-gray-100 hover:bg-gray-200 text-gray-800 font-semibold py-1 px-3 border border-gray-400 rounded shadow">
-                                Lift Station Block
-                            </button>
+                        </div>
+                        
+                        <div class="space-y-5">
+                            <div v-for="item in group.categories" :key="item.category_id" 
+                                 @click="openChartModal(item)"
+                                 class="group cursor-pointer p-2 -mx-2 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors">
+                                <div class="flex justify-between items-end mb-1">
+                                    <div>
+                                        <p class="text-gray-700 dark:text-gray-300 text-sm font-medium">{{ item.category_name }}</p>
+                                        <div class="flex gap-2 mt-1">
+                                            <span v-if="item.is_blocked" class="text-[10px] uppercase font-bold tracking-wider bg-red-100 text-red-700 px-1.5 py-0.5 rounded border border-red-200">Blocked</span>
+                                            <span v-else class="text-[10px] uppercase font-bold tracking-wider bg-green-100 text-green-700 px-1.5 py-0.5 rounded border border-green-200">Active</span>
+                                        </div>
+                                    </div>
+                                    <div class="text-right">
+                                        <span class="text-sm font-bold text-gray-900 dark:text-white">{{ item.active_minutes }}</span>
+                                        <span class="text-xs text-gray-500 dark:text-gray-400"> / {{ item.limit_minutes }} min</span>
+                                    </div>
+                                </div>
+                                <div class="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2 mt-2 mb-2">
+                                    <div class="h-2 rounded-full transition-all duration-500"
+                                         :class="{'bg-red-500': item.is_blocked, 'bg-[#005cff]': !item.is_blocked && (item.active_minutes/item.limit_minutes) < 0.8, 'bg-amber-500': !item.is_blocked && (item.active_minutes/item.limit_minutes) >= 0.8}"
+                                         :style="'width: ' + Math.min((item.active_minutes / item.limit_minutes) * 100, 100) + '%'"></div>
+                                </div>
+                                <div class="flex gap-3 mt-2">
+                                    <button @click.stop="resetUsage(item.profile_id, item.category_id)" class="text-[10px] uppercase font-bold tracking-wider text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white bg-gray-100 dark:bg-gray-800 px-2 py-1 rounded">Reset</button>
+                                    <button @click.stop="addBonus(item.profile_id, item.category_id, 15)" class="text-[10px] uppercase font-bold tracking-wider text-green-700 dark:text-green-400 hover:text-green-900 dark:hover:text-green-300 bg-green-50 dark:bg-green-900/30 px-2 py-1 rounded">+15m</button>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
 
-                <h2 class="text-xl font-bold mt-12 mb-4">Recent Events</h2>
-                <div class="bg-white rounded-lg shadow overflow-hidden">
-                    <table class="min-w-full divide-y divide-gray-200">
-                        <thead class="bg-gray-50">
-                            <tr>
-                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Time</th>
-                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Action</th>
-                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Target</th>
-                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Reason</th>
-                            </tr>
-                        </thead>
-                        <tbody class="bg-white divide-y divide-gray-200">
-                            <tr v-for="log in logs" :key="log.id">
-                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{{ new Date(log.timestamp).toLocaleString() }}</td>
-                                <td class="px-6 py-4 whitespace-nowrap">
-                                    <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full"
-                                          :class="{'bg-red-100 text-red-800': log.action === 'BLOCK', 'bg-green-100 text-green-800': log.action === 'UNBLOCK', 'bg-blue-100 text-blue-800': log.action === 'RESET'}">
-                                      {{ log.action }}
-                                    </span>
-                                </td>
-                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{{ log.target }}</td>
-                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{{ log.reason }}</td>
-                            </tr>
-                        </tbody>
-                    </table>
+                <!-- Chart Modal -->
+                <div v-if="showChartModal" class="fixed inset-0 z-50 flex items-center justify-center overflow-x-hidden overflow-y-auto outline-none focus:outline-none">
+                    <!-- Overlay -->
+                    <div class="fixed inset-0 bg-black opacity-50" @click="closeChartModal"></div>
+                    
+                    <!-- Modal Content -->
+                    <div class="relative w-full max-w-4xl mx-auto my-6 p-4">
+                        <div class="relative flex flex-col w-full bg-white dark:bg-gray-800 border-0 rounded-lg shadow-lg outline-none focus:outline-none">
+                            <!-- Header -->
+                            <div class="flex items-start justify-between p-5 border-b border-solid border-gray-200 dark:border-gray-700 rounded-t">
+                                <h3 class="text-xl font-semibold text-gray-900 dark:text-white">
+                                    {{ chartModalData.profile_name }} - {{ chartModalData.category_name }}
+                                </h3>
+                                <button class="p-1 ml-auto bg-transparent border-0 text-gray-900 dark:text-white float-right text-3xl leading-none font-semibold outline-none focus:outline-none" @click="closeChartModal">
+                                    <span class="bg-transparent h-6 w-6 text-2xl block outline-none focus:outline-none">&times;</span>
+                                </button>
+                            </div>
+                            
+                            <!-- Body -->
+                            <div class="relative p-6 flex-auto max-h-[80vh] overflow-y-auto">
+                                <div class="mb-8">
+                                    <h4 class="text-lg font-bold mb-2 text-gray-800 dark:text-gray-200">Today's Usage (Hourly)</h4>
+                                    <div class="h-64">
+                                        <canvas id="intradayChart"></canvas>
+                                    </div>
+                                </div>
+                                <div>
+                                    <h4 class="text-lg font-bold mb-2 text-gray-800 dark:text-gray-200">Historical Usage (Last 30 Days)</h4>
+                                    <div class="h-64">
+                                        <canvas id="historicalChart"></canvas>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <!-- Footer -->
+                            <div class="flex items-center justify-end p-6 border-t border-solid border-gray-200 dark:border-gray-700 rounded-b">
+                                <button class="text-blue-500 background-transparent font-bold uppercase px-6 py-2 text-sm outline-none focus:outline-none mr-1 mb-1 ease-linear transition-all duration-150" type="button" @click="closeChartModal">
+                                    Close
+                                </button>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
 
             <!-- Profiles View -->
             <div v-if="currentView === 'profiles'">
                 <div class="flex justify-between items-center mb-6">
-                    <h2 class="text-xl font-bold">Managed Profiles (Kids)</h2>
-                    <button @click="showAddProfile = true" class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded">Add Profile</button>
+                    <h2 class="text-xl font-bold text-gray-900 dark:text-white">Devices</h2>
+                    <button @click="showAddProfile = true" class="bg-[#005cff] hover:bg-blue-700 text-white font-bold py-2 px-4 rounded">Add Profile</button>
                 </div>
 
-                <div class="bg-white shadow rounded-lg p-6 mb-6" v-if="showAddProfile">
-                    <h3 class="font-bold mb-4">New Profile</h3>
+                <div class="bg-white dark:bg-gray-800 shadow rounded-lg p-6 mb-6" v-if="showAddProfile">
+                    <h3 class="font-bold mb-4 text-gray-900 dark:text-white">New Profile</h3>
                     
-                    <div class="mb-6 bg-blue-50 p-3 rounded border border-blue-100">
-                        <label class="block text-sm font-semibold text-blue-800 mb-1">Auto-fill from UniFi Network</label>
-                        <p class="text-xs text-blue-600 mb-2">Select an existing device to automatically grab its IP and MAC address.</p>
-                        <select @change="autoFillProfile($event.target.value)" class="block w-full border border-blue-200 p-2 rounded text-sm bg-white">
+                    <div class="mb-6 bg-blue-50 dark:bg-blue-900 p-3 rounded border border-blue-100 dark:border-blue-800">
+                        <label class="block text-sm font-semibold text-blue-800 dark:text-blue-300 mb-1">Auto-fill from UniFi Network</label>
+                        <p class="text-xs text-blue-600 dark:text-blue-400 mb-2">Select an existing device to automatically grab its IP and MAC address.</p>
+                        <select @change="autoFillProfile($event.target.value)" class="block w-full border border-blue-200 dark:border-gray-600 p-2 rounded text-sm bg-white dark:bg-gray-700 dark:text-white">
                             <option value="" disabled selected>Select a client...</option>
                             <option v-for="c in unifiClients" :value="c.mac" :key="c.mac">{{ c.name }} (IP: {{ c.ip }} | MAC: {{ c.mac }})</option>
                         </select>
@@ -127,79 +211,82 @@
 
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
                         <div>
-                            <label class="block text-sm font-medium text-gray-700">Name</label>
-                            <input v-model="newProfile.name" placeholder="e.g. Timmy's iPad" class="mt-1 block w-full border p-2 rounded">
+                            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Name</label>
+                            <input v-model="newProfile.name" placeholder="e.g. Timmy's iPad" class="mt-1 block w-full border dark:border-gray-600 p-2 rounded dark:bg-gray-700 dark:text-white">
                         </div>
                         <div>
-                            <label class="block text-sm font-medium text-gray-700">IP Address</label>
-                            <input v-model="newProfile.ip_address" placeholder="e.g. 192.168.1.50" class="mt-1 block w-full border p-2 rounded">
-                            <p class="text-xs text-gray-500 mt-1">Needed to track DNS queries in Pi-hole. Use a static IP.</p>
+                            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">IP Address</label>
+                            <input v-model="newProfile.ip_address" placeholder="e.g. 192.168.1.50" class="mt-1 block w-full border dark:border-gray-600 p-2 rounded dark:bg-gray-700 dark:text-white">
+                            <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">Needed to track DNS queries in Pi-hole. Use a static IP.</p>
                         </div>
                         <div>
-                            <label class="block text-sm font-medium text-gray-700">MAC Address</label>
-                            <input v-model="newProfile.mac_address" placeholder="e.g. aa:bb:cc:dd:ee:ff" class="mt-1 block w-full border p-2 rounded">
-                            <p class="text-xs text-gray-500 mt-1">Needed to block the device in UniFi.</p>
+                            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">MAC Address</label>
+                            <input v-model="newProfile.mac_address" placeholder="e.g. aa:bb:cc:dd:ee:ff" class="mt-1 block w-full border dark:border-gray-600 p-2 rounded dark:bg-gray-700 dark:text-white">
+                            <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">Needed to block the device in UniFi.</p>
                         </div>
-                        <div class="col-span-1 md:col-span-2 bg-gray-50 p-3 rounded border">
-                            <p class="text-sm text-gray-700 font-semibold mb-2">Curfew (Optional)</p>
-                            <p class="text-xs text-gray-500 mb-3">If set, the device will be completely disconnected from the network (Station Block) between these times.</p>
+                        <div class="col-span-1 md:col-span-2 bg-gray-50 dark:bg-gray-700 p-3 rounded border dark:border-gray-600">
+                            <p class="text-sm text-gray-700 dark:text-gray-200 font-semibold mb-2">Curfew (Optional)</p>
+                            <p class="text-xs text-gray-500 dark:text-gray-400 mb-3">If set, the device will be completely disconnected from the network (Station Block) between these times.</p>
                             <div class="grid grid-cols-2 gap-4">
                                 <div>
-                                    <label class="block text-xs font-medium text-gray-600">Start Time</label>
-                                    <input v-model="newProfile.curfew_start" type="time" class="mt-1 w-full border p-2 rounded">
+                                    <label class="block text-xs font-medium text-gray-600 dark:text-gray-300">Start Time</label>
+                                    <input v-model="newProfile.curfew_start" type="time" class="mt-1 w-full border dark:border-gray-600 p-2 rounded dark:bg-gray-700 dark:text-white">
                                 </div>
                                 <div>
-                                    <label class="block text-xs font-medium text-gray-600">End Time</label>
-                                    <input v-model="newProfile.curfew_end" type="time" class="mt-1 w-full border p-2 rounded">
+                                    <label class="block text-xs font-medium text-gray-600 dark:text-gray-300">End Time</label>
+                                    <input v-model="newProfile.curfew_end" type="time" class="mt-1 w-full border dark:border-gray-600 p-2 rounded dark:bg-gray-700 dark:text-white">
                                 </div>
                             </div>
                         </div>
                         <div class="col-span-1 md:col-span-2 flex items-center mt-2">
-                            <input v-model="newProfile.audit_only" type="checkbox" id="auditOnly" class="h-4 w-4 text-blue-600 border-gray-300 rounded">
-                            <label for="auditOnly" class="ml-2 block text-sm text-gray-900 font-medium">Audit Only (Do not enforce blocks in UniFi)</label>
+                            <input v-model="newProfile.audit_only" type="checkbox" id="auditOnly" class="h-4 w-4 text-blue-600 border-gray-300 dark:border-gray-600 rounded dark:bg-gray-700">
+                            <label for="auditOnly" class="ml-2 block text-sm text-gray-900 dark:text-gray-200 font-medium">Audit Only (Do not enforce blocks in UniFi)</label>
                         </div>
                     </div>
                     <div class="flex gap-2">
                         <button @click="createProfile" class="bg-green-500 hover:bg-green-700 text-white py-1 px-4 rounded">Save</button>
-                        <button @click="showAddProfile = false" class="bg-gray-300 hover:bg-gray-400 py-1 px-4 rounded">Cancel</button>
+                        <button @click="showAddProfile = false" class="bg-gray-300 hover:bg-gray-400 dark:bg-gray-600 dark:hover:bg-gray-500 py-1 px-4 rounded text-gray-900 dark:text-white">Cancel</button>
                     </div>
                 </div>
 
-                <div v-for="prof in profiles" :key="prof.id" class="bg-white shadow rounded-lg p-6 mb-4">
+                <div v-for="prof in profiles" :key="prof.id" class="bg-white dark:bg-gray-800 shadow rounded-lg p-6 mb-4">
                     <div class="flex justify-between items-start mb-4">
                         <div>
-                            <h3 class="text-lg font-bold flex items-center gap-2">
+                            <h3 class="text-lg font-bold flex items-center gap-2 text-gray-900 dark:text-white">
                                 {{ prof.name }}
                                 <span v-if="prof.audit_only" class="bg-purple-100 text-purple-800 text-xs font-semibold px-2 py-1 rounded">AUDIT MODE</span>
                             </h3>
-                            <p class="text-sm text-gray-500">IP: {{ prof.ip_address }} | MAC: {{ prof.mac_address }}</p>
-                            <p class="text-sm text-gray-500" v-if="prof.curfew_start">Curfew: {{ prof.curfew_start }} to {{ prof.curfew_end }}</p>
+                            <p class="text-sm text-gray-500 dark:text-gray-400">IP: {{ prof.ip_address }} | MAC: {{ prof.mac_address }}</p>
+                            <p class="text-sm text-gray-500 dark:text-gray-400" v-if="prof.curfew_start">Curfew: {{ prof.curfew_start }} to {{ prof.curfew_end }}</p>
                         </div>
-                        <button @click="deleteProfile(prof.id)" class="text-red-500 hover:text-red-700">Delete</button>
+                        <div>
+                            <button @click="startEditProfile(prof)" class="text-blue-500 hover:text-blue-700 mr-4 font-semibold text-sm">Edit</button>
+                            <button @click="deleteProfile(prof.id)" class="text-red-500 hover:text-red-700 font-semibold text-sm">Delete</button>
+                        </div>
                     </div>
 
-                    <h4 class="font-semibold text-sm mb-2 text-gray-700 uppercase tracking-wider">Quotas & Limits</h4>
+                    <h4 class="font-semibold text-sm mb-2 text-gray-700 dark:text-gray-300 uppercase tracking-wider">Quotas & Limits</h4>
                     
-                    <div class="overflow-x-auto mb-4 border rounded-lg" v-if="prof.quotas && prof.quotas.length > 0">
-                        <table class="min-w-full divide-y divide-gray-200">
-                            <thead class="bg-gray-50">
+                    <div class="overflow-x-auto mb-4 border dark:border-gray-700 rounded-lg" v-if="prof.quotas && prof.quotas.length > 0">
+                        <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+                            <thead class="bg-gray-50 dark:bg-gray-700">
                                 <tr>
-                                    <th scope="col" class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Category</th>
-                                    <th scope="col" class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Daily Limit</th>
-                                    <th scope="col" class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">UniFi Rule ID</th>
-                                    <th scope="col" class="px-4 py-2 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                                    <th scope="col" class="px-4 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Category</th>
+                                    <th scope="col" class="px-4 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Daily Limit</th>
+                                    <th scope="col" class="px-4 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">UniFi Rule ID</th>
+                                    <th scope="col" class="px-4 py-2 text-center text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Actions</th>
                                 </tr>
                             </thead>
-                            <tbody class="bg-white divide-y divide-gray-200">
+                            <tbody class="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
                                 <li v-for="quota in prof.quotas" :key="quota.id" class="hidden"></li> <!-- Vue Key Hack -->
                                 <tr v-for="quota in prof.quotas" :key="'tr-'+quota.id">
-                                    <td class="px-4 py-2 whitespace-nowrap text-sm font-medium text-gray-900">
+                                    <td class="px-4 py-2 whitespace-nowrap text-sm font-medium text-gray-900 dark:text-gray-200">
                                         {{ categories.find(c => c.id === quota.category_id)?.name || 'Unknown' }}
                                     </td>
-                                    <td class="px-4 py-2 whitespace-nowrap text-sm text-gray-500">
+                                    <td class="px-4 py-2 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
                                         {{ quota.daily_limit_minutes }} mins
                                     </td>
-                                    <td class="px-4 py-2 whitespace-nowrap text-sm text-gray-700">
+                                    <td class="px-4 py-2 whitespace-nowrap text-sm text-gray-700 dark:text-gray-300">
                                         <div v-if="quota.traffic_rule_id" class="flex flex-col gap-1">
                                             <span class="font-semibold">{{ getRuleName(quota.traffic_rule_id) }}</span>
                                             <span v-if="getRuleStatus(quota.traffic_rule_id)" class="text-[10px] uppercase font-bold tracking-wider bg-red-100 text-red-800 px-2 py-0.5 rounded-full border border-red-200 w-max">Blocked</span>
@@ -209,6 +296,7 @@
                                     </td>
                                     <td class="px-4 py-2 whitespace-nowrap text-sm font-medium text-center">
                                         <div class="flex justify-center space-x-2">
+                                            <button @click="startEditQuota(quota)" class="text-white bg-blue-500 hover:bg-blue-600 px-2 py-1 rounded text-xs font-semibold">Edit</button>
                                             <button @click="toggleQuotaRule(quota.id, true)" title="Test Block Rule" class="text-white bg-orange-500 hover:bg-orange-600 px-2 py-1 rounded text-xs font-semibold">Block</button>
                                             <button @click="toggleQuotaRule(quota.id, false)" title="Test Unblock Rule" class="text-white bg-green-500 hover:bg-green-600 px-2 py-1 rounded text-xs font-semibold">Unblock</button>
                                             <button @click="deleteQuota(quota.id)" class="text-white bg-red-500 hover:bg-red-600 px-2 py-1 rounded text-xs font-semibold">Delete</button>
@@ -220,105 +308,202 @@
                     </div>
                     <div v-else class="text-sm text-gray-400 italic mb-4">No limits configured for this profile.</div>
 
-                    <div class="bg-gray-50 p-3 rounded-lg border flex flex-wrap items-center gap-2 mt-2">
-                        <select v-model="newQuota[prof.id].category_id" class="border border-gray-300 p-2 text-sm rounded shadow-sm flex-grow min-w-[150px]">
+                    <div class="bg-gray-50 dark:bg-gray-700 p-3 rounded-lg border dark:border-gray-600 flex flex-wrap items-center gap-2 mt-2">
+                        <select v-model="newQuota[prof.id].category_id" class="border border-gray-300 dark:border-gray-600 p-2 text-sm rounded shadow-sm flex-grow min-w-[150px] dark:bg-gray-800 dark:text-white">
                             <option value="" disabled selected>Select Category...</option>
                             <option v-for="cat in categories" :value="cat.id" :key="cat.id">{{ cat.name }}</option>
                         </select>
-                        <input v-model.number="newQuota[prof.id].daily_limit_minutes" type="number" placeholder="Minutes/day" class="border border-gray-300 p-2 w-28 text-sm rounded shadow-sm">
-                        <select v-model="newQuota[prof.id].traffic_rule_id" class="border border-gray-300 p-2 text-sm rounded shadow-sm flex-grow min-w-[180px]">
+                        <input v-model.number="newQuota[prof.id].daily_limit_minutes" type="number" placeholder="Minutes/day" class="border border-gray-300 dark:border-gray-600 p-2 w-28 text-sm rounded shadow-sm dark:bg-gray-800 dark:text-white">
+                        <select v-model="newQuota[prof.id].traffic_rule_id" class="border border-gray-300 dark:border-gray-600 p-2 text-sm rounded shadow-sm flex-grow min-w-[180px] dark:bg-gray-800 dark:text-white">
                             <option value="" disabled selected>Select UniFi Traffic Rule...</option>
                             <option v-for="r in unifiRules" :value="r.id" :key="r.id">{{ r.description }}</option>
                         </select>
-                        <button @click="addQuota(prof.id)" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded text-sm font-bold shadow-sm whitespace-nowrap">Add Limit</button>
+                        <button @click="addQuota(prof.id)" class="bg-[#005cff] hover:bg-blue-700 text-white px-4 py-2 rounded text-sm font-bold shadow-sm whitespace-nowrap">Add Limit</button>
                     </div>
                 </div>
+
+                <!-- Edit Profile Modal -->
+                <div v-if="editingProfile" class="fixed inset-0 z-50 flex items-center justify-center overflow-x-hidden overflow-y-auto outline-none focus:outline-none">
+                    <div class="fixed inset-0 bg-black opacity-50" @click="editingProfile = null"></div>
+                    <div class="relative w-full max-w-2xl mx-auto my-6 p-4">
+                        <div class="relative flex flex-col w-full bg-white dark:bg-gray-800 border-0 rounded-lg shadow-lg outline-none focus:outline-none">
+                            <div class="flex items-start justify-between p-5 border-b border-solid border-gray-200 dark:border-gray-700 rounded-t">
+                                <h3 class="text-xl font-semibold text-gray-900 dark:text-white">Edit Profile (Device)</h3>
+                                <button class="p-1 ml-auto bg-transparent border-0 text-gray-900 dark:text-white float-right text-3xl leading-none font-semibold" @click="editingProfile = null">
+                                    <span class="bg-transparent h-6 w-6 text-2xl block outline-none focus:outline-none">&times;</span>
+                                </button>
+                            </div>
+                            <div class="relative p-6 flex-auto">
+                                <div class="grid grid-cols-1 gap-4">
+                                    <div>
+                                        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Friendly Name</label>
+                                        <input v-model="editingProfile.name" class="mt-1 block w-full border dark:border-gray-600 p-2 rounded dark:bg-gray-700 dark:text-white">
+                                    </div>
+                                    <div>
+                                        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">IP Address</label>
+                                        <input v-model="editingProfile.ip_address" class="mt-1 block w-full border dark:border-gray-600 p-2 rounded dark:bg-gray-700 dark:text-white">
+                                    </div>
+                                    <div>
+                                        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">MAC Address</label>
+                                        <input v-model="editingProfile.mac_address" class="mt-1 block w-full border dark:border-gray-600 p-2 rounded dark:bg-gray-700 dark:text-white">
+                                    </div>
+                                    <div class="bg-gray-50 dark:bg-gray-700 p-3 rounded border dark:border-gray-600 mt-2">
+                                        <p class="text-sm font-semibold mb-2 text-gray-900 dark:text-white">Curfew</p>
+                                        <div class="grid grid-cols-2 gap-4">
+                                            <div>
+                                                <label class="block text-xs font-medium text-gray-600 dark:text-gray-400">Start Time</label>
+                                                <input v-model="editingProfile.curfew_start" type="time" class="mt-1 w-full border dark:border-gray-600 p-2 rounded dark:bg-gray-700 dark:text-white">
+                                            </div>
+                                            <div>
+                                                <label class="block text-xs font-medium text-gray-600 dark:text-gray-400">End Time</label>
+                                                <input v-model="editingProfile.curfew_end" type="time" class="mt-1 w-full border dark:border-gray-600 p-2 rounded dark:bg-gray-700 dark:text-white">
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="flex items-center mt-2">
+                                        <input v-model="editingProfile.audit_only" type="checkbox" id="editAuditOnly" class="h-4 w-4 text-[#005cff] border-gray-300 dark:border-gray-600 rounded dark:bg-gray-700">
+                                        <label for="editAuditOnly" class="ml-2 block text-sm text-gray-900 dark:text-gray-200 font-medium">Audit Only (Do not enforce blocks in UniFi)</label>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="flex items-center justify-end p-6 border-t border-solid border-gray-200 dark:border-gray-700 rounded-b">
+                                <button class="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 font-bold uppercase px-6 py-2 text-sm mr-2" type="button" @click="editingProfile = null">Cancel</button>
+                                <button class="bg-[#005cff] text-white active:bg-blue-700 font-bold uppercase text-sm px-6 py-3 rounded shadow hover:shadow-lg outline-none focus:outline-none" type="button" @click="saveEditProfile">Save Changes</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Edit Quota Modal -->
+                <div v-if="editingQuota" class="fixed inset-0 z-[60] flex items-center justify-center overflow-x-hidden overflow-y-auto outline-none focus:outline-none">
+                    <div class="fixed inset-0 bg-black opacity-50" @click="editingQuota = null"></div>
+                    <div class="relative w-full max-w-lg mx-auto my-6 p-4">
+                        <div class="relative flex flex-col w-full bg-white dark:bg-gray-800 border-0 rounded-lg shadow-lg outline-none focus:outline-none">
+                            <div class="flex items-start justify-between p-5 border-b border-solid border-gray-200 dark:border-gray-700 rounded-t">
+                                <h3 class="text-xl font-semibold text-gray-900 dark:text-white">Edit Category Limit</h3>
+                                <button class="p-1 ml-auto bg-transparent border-0 text-gray-900 dark:text-white float-right text-3xl leading-none font-semibold" @click="editingQuota = null">
+                                    <span class="bg-transparent h-6 w-6 text-2xl block outline-none focus:outline-none">&times;</span>
+                                </button>
+                            </div>
+                            <div class="relative p-6 flex-auto flex flex-col gap-4">
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Category</label>
+                                    <select v-model="editingQuota.category_id" class="mt-1 block w-full border dark:border-gray-600 p-2 rounded dark:bg-gray-700 dark:text-white" disabled>
+                                        <option v-for="cat in categories" :value="cat.id" :key="cat.id">{{ cat.name }}</option>
+                                    </select>
+                                    <p class="text-xs text-gray-500 mt-1">Category cannot be changed. Delete and recreate to change.</p>
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Daily Limit (Minutes)</label>
+                                    <input v-model.number="editingQuota.daily_limit_minutes" type="number" class="mt-1 block w-full border dark:border-gray-600 p-2 rounded dark:bg-gray-700 dark:text-white">
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">UniFi Traffic Rule</label>
+                                    <select v-model="editingQuota.traffic_rule_id" class="mt-1 block w-full border dark:border-gray-600 p-2 rounded dark:bg-gray-700 dark:text-white">
+                                        <option value="">None</option>
+                                        <option v-for="r in unifiRules" :value="r.id" :key="r.id">{{ r.description }}</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="flex items-center justify-end p-6 border-t border-solid border-gray-200 dark:border-gray-700 rounded-b">
+                                <button class="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 font-bold uppercase px-6 py-2 text-sm mr-2" type="button" @click="editingQuota = null">Cancel</button>
+                                <button class="bg-[#005cff] text-white active:bg-blue-700 font-bold uppercase text-sm px-6 py-3 rounded shadow hover:shadow-lg outline-none focus:outline-none" type="button" @click="saveQuotaEdit">Save Changes</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
             </div>
 
             <!-- Settings View -->
-            <div v-if="currentView === 'settings'">
-                <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+            <div v-if="currentView === 'settings'" class="max-w-4xl mx-auto">
+                <div class="flex border-b border-gray-200 dark:border-gray-800 mb-6 space-x-6 px-2">
+                    <button @click="settingsTab = 'system'" :class="{'border-[#005cff] text-[#005cff] dark:text-[#3380ff] font-semibold': settingsTab === 'system', 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200': settingsTab !== 'system'}" class="py-3 text-center text-sm border-b-2 transition-colors">System Config</button>
+                    <button @click="settingsTab = 'categories'" :class="{'border-[#005cff] text-[#005cff] dark:text-[#3380ff] font-semibold': settingsTab === 'categories', 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200': settingsTab !== 'categories'}" class="py-3 text-center text-sm border-b-2 transition-colors">Domain Categories</button>
+                </div>
+
+                <div class="grid grid-cols-1 gap-8">
 
                     <!-- System Config -->
-                    <div class="bg-white shadow rounded-lg p-6">
+                    <div v-show="settingsTab === 'system'" class="bg-white dark:bg-gray-800 shadow rounded-lg p-6">
                         <h2 class="text-xl font-bold mb-4">System Settings</h2>
                         <form @submit.prevent="saveSettings" class="space-y-4">
                             <div>
-                                <label class="block text-sm font-medium text-gray-700">UniFi Host / IP</label>
-                                <input v-model="settings.unifi_host" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2">
+                                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">UniFi Host / IP</label>
+                                <input v-model="settings.unifi_host" class="mt-1 block w-full border border-gray-300 dark:border-gray-600 rounded-md shadow-sm p-2 dark:bg-gray-700 dark:text-white">
                             </div>
                             <div class="grid grid-cols-2 gap-4">
                                 <div>
-                                    <label class="block text-sm font-medium text-gray-700">UniFi Port</label>
-                                    <input v-model.number="settings.unifi_port" type="number" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2">
+                                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">UniFi Port</label>
+                                    <input v-model.number="settings.unifi_port" type="number" class="mt-1 block w-full border border-gray-300 dark:border-gray-600 rounded-md shadow-sm p-2 dark:bg-gray-700 dark:text-white">
                                 </div>
                                 <div>
-                                    <label class="block text-sm font-medium text-gray-700">UniFi Site</label>
-                                    <input v-model="settings.unifi_site" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2">
+                                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">UniFi Site</label>
+                                    <input v-model="settings.unifi_site" class="mt-1 block w-full border border-gray-300 dark:border-gray-600 rounded-md shadow-sm p-2 dark:bg-gray-700 dark:text-white">
                                 </div>
                             </div>
                             <div class="grid grid-cols-2 gap-4">
                                 <div>
-                                    <label class="block text-sm font-medium text-gray-700">UniFi Username</label>
-                                    <input v-model="settings.unifi_username" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2">
+                                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">UniFi Username</label>
+                                    <input v-model="settings.unifi_username" class="mt-1 block w-full border border-gray-300 dark:border-gray-600 rounded-md shadow-sm p-2 dark:bg-gray-700 dark:text-white">
                                 </div>
                                 <div>
-                                    <label class="block text-sm font-medium text-gray-700">UniFi Password</label>
-                                    <input v-model="settings.unifi_password" type="password" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2">
+                                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">UniFi Password</label>
+                                    <input v-model="settings.unifi_password" type="password" class="mt-1 block w-full border border-gray-300 dark:border-gray-600 rounded-md shadow-sm p-2 dark:bg-gray-700 dark:text-white">
                                 </div>
                             </div>
-                            <button type="button" @click="testUnifi" class="mt-2 w-full flex justify-center py-1 px-4 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-gray-50 hover:bg-gray-100 focus:outline-none">
+                            <button type="button" @click="testUnifi" class="mt-2 w-full flex justify-center py-1 px-4 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm text-sm font-medium text-gray-700 dark:text-gray-300 bg-gray-50 dark:bg-gray-700 hover:bg-gray-100 dark:hover:bg-gray-600 focus:outline-none">
                                 Test UniFi Connection
                             </button>
-                            <hr class="my-4">
+                            <hr class="my-4 border-gray-200 dark:border-gray-700">
                             <div>
-                                <label class="block text-sm font-medium text-gray-700">Pi-hole 1 API URL</label>
-                                <input v-model="settings.pihole_url_1" placeholder="http://192.168.1.2" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2">
+                                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Pi-hole 1 API URL</label>
+                                <input v-model="settings.pihole_url_1" placeholder="http://192.168.1.2" class="mt-1 block w-full border border-gray-300 dark:border-gray-600 rounded-md shadow-sm p-2 dark:bg-gray-700 dark:text-white">
                             </div>
                             <div>
-                                <label class="block text-sm font-medium text-gray-700">Pi-hole 1 API Key</label>
-                                <input v-model="settings.pihole_api_key_1" type="password" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2">
+                                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Pi-hole 1 API Key</label>
+                                <input v-model="settings.pihole_api_key_1" type="password" class="mt-1 block w-full border border-gray-300 dark:border-gray-600 rounded-md shadow-sm p-2 dark:bg-gray-700 dark:text-white">
                             </div>
                             <div>
-                                <label class="block text-sm font-medium text-gray-700">Pi-hole 2 API URL (Optional)</label>
-                                <input v-model="settings.pihole_url_2" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2">
+                                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Pi-hole 2 API URL (Optional)</label>
+                                <input v-model="settings.pihole_url_2" class="mt-1 block w-full border border-gray-300 dark:border-gray-600 rounded-md shadow-sm p-2 dark:bg-gray-700 dark:text-white">
                             </div>
                             <div>
-                                <label class="block text-sm font-medium text-gray-700">Pi-hole 2 API Key (Optional)</label>
-                                <input v-model="settings.pihole_api_key_2" type="password" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2">
+                                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Pi-hole 2 API Key (Optional)</label>
+                                <input v-model="settings.pihole_api_key_2" type="password" class="mt-1 block w-full border border-gray-300 dark:border-gray-600 rounded-md shadow-sm p-2 dark:bg-gray-700 dark:text-white">
                             </div>
-                            <button type="button" @click="testPihole" class="mt-2 w-full flex justify-center py-1 px-4 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-gray-50 hover:bg-gray-100 focus:outline-none">
+                            <button type="button" @click="testPihole" class="mt-2 w-full flex justify-center py-1 px-4 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm text-sm font-medium text-gray-700 dark:text-gray-300 bg-gray-50 dark:bg-gray-700 hover:bg-gray-100 dark:hover:bg-gray-600 focus:outline-none">
                                 Test Pi-hole Connection
                             </button>
-                            <button type="submit" class="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none">
+                            <button type="submit" class="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-[#005cff] hover:bg-blue-700 focus:outline-none">
                                 Save Settings
                             </button>
-                            <hr class="my-4">
-                            <button type="button" @click="wipeUsageHistory" class="w-full flex justify-center py-2 px-4 border border-red-300 rounded-md shadow-sm text-sm font-medium text-red-700 bg-red-50 hover:bg-red-100 focus:outline-none">
-                                Wipe All Usage History (Fixes Corrupted Dates)
+                            <hr class="my-4 border-gray-200 dark:border-gray-700">
+                            <button type="button" @click="wipeUsageHistory" class="w-full flex justify-center py-2 px-4 border border-red-300 dark:border-red-800 rounded-md shadow-sm text-sm font-medium text-red-700 dark:text-red-400 bg-red-50 dark:bg-red-900 hover:bg-red-100 dark:hover:bg-red-800 focus:outline-none">
+                                Wipe All Usage History
                             </button>
                         </form>
                     </div>
 
                     <!-- Categories Config -->
-                    <div class="bg-white shadow rounded-lg p-6">
+                    <div v-show="settingsTab === 'categories'" class="bg-white dark:bg-gray-800 shadow rounded-lg p-6">
                         <h2 class="text-xl font-bold mb-4">Domain Categories</h2>
 
                         <div class="mb-6 space-y-2">
-                            <div v-for="cat in categories" :key="cat.id" class="p-3 border rounded flex justify-between items-center bg-gray-50">
+                            <div v-for="cat in categories" :key="cat.id" class="p-3 border border-gray-200 dark:border-gray-600 rounded flex justify-between items-center bg-gray-50 dark:bg-gray-700">
                                 <div>
                                     <h4 class="font-bold">{{ cat.name }} (ID: {{ cat.id }})</h4>
-                                    <p class="text-xs text-gray-600 truncate w-64">{{ cat.domains }}</p>
+                                    <p class="text-xs text-gray-600 dark:text-gray-400 truncate w-64">{{ cat.domains }}</p>
                                 </div>
                                 <button @click="deleteCategory(cat.id)" class="text-red-500 text-sm hover:underline">Delete</button>
                             </div>
                         </div>
 
-                        <div class="border-t pt-4">
+                        <div class="border-t border-gray-200 dark:border-gray-700 pt-4">
                             <h3 class="font-bold mb-2">Add New Category</h3>
-                            <input v-model="newCategory.name" placeholder="Category Name (e.g. YouTube)" class="w-full border p-2 mb-2 rounded">
-                            <textarea v-model="newCategory.domains" placeholder="Domains separated by comma (e.g. youtube.com, googlevideo.com)" rows="3" class="w-full border p-2 mb-2 rounded text-sm"></textarea>
-                            <button @click="createCategory" class="bg-green-500 hover:bg-green-600 text-white py-1 px-4 rounded text-sm">Add Category</button>
+                            <input v-model="newCategory.name" placeholder="Category Name (e.g. YouTube)" class="w-full border border-gray-300 dark:border-gray-600 p-2 mb-2 rounded dark:bg-gray-700 dark:text-white">
+                            <textarea v-model="newCategory.domains" placeholder="Domains separated by comma (e.g. youtube.com, googlevideo.com)" rows="3" class="w-full border border-gray-300 dark:border-gray-600 p-2 mb-2 rounded text-sm dark:bg-gray-700 dark:text-white"></textarea>
+                            <button @click="createCategory" class="bg-[#005cff] hover:bg-blue-600 text-white py-1.5 px-4 rounded-lg shadow-sm font-medium">Add Category</button>
                         </div>
                     </div>
 
@@ -339,6 +524,8 @@
             data() {
                 return {
                     currentView: 'dashboard',
+                    settingsTab: 'system',
+                    isDarkMode: false,
                     settings: {},
                     categories: [],
                     profiles: [],
@@ -353,10 +540,46 @@
                         curfew_start: '', curfew_end: '', curfew_enforcement: 'station_block', audit_only: false
                     },
                     newCategory: { name: '', domains: '' },
-                    newQuota: {} // Bound dynamically by profile ID
+                    newQuota: {}, // Bound dynamically by profile ID
+                    showChartModal: false,
+                    chartModalData: {},
+                    intradayChartInstance: null,
+                    historicalChartInstance: null,
+                    editingProfile: null,
+                    editingQuota: null,
+                    isSidebarCollapsed: false,
+                }
+            },
+            computed: {
+                groupedDashboard() {
+                    const groups = {};
+                    for (const item of this.dashboard) {
+                        if (!groups[item.profile_id]) {
+                            groups[item.profile_id] = {
+                                profile_id: item.profile_id,
+                                profile_name: item.profile_name,
+                                is_blocked: item.profile_is_blocked,
+                                categories: []
+                            };
+                        }
+                        groups[item.profile_id].categories.push(item);
+                    }
+                    return Object.values(groups);
                 }
             },
             mounted() {
+                // Initialize Dark Mode
+                const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+                this.isDarkMode = localStorage.getItem('darkMode') ? localStorage.getItem('darkMode') === 'true' : prefersDark;
+                if (this.isDarkMode) {
+                    document.documentElement.classList.add('dark');
+                }
+
+                // Collapse sidebar by default on mobile
+                if (window.innerWidth < 768) {
+                    this.isSidebarCollapsed = true;
+                }
+
                 this.fetchData();
                 // Refresh dashboard every 30s
                 setInterval(() => {
@@ -367,6 +590,127 @@
                 }, 30000);
             },
             methods: {
+                switchView(view) {
+                    this.currentView = view;
+                    if(window.innerWidth < 768) {
+                        this.isSidebarCollapsed = true;
+                    }
+                },
+                async openChartModal(item) {
+                    this.chartModalData = item;
+                    this.showChartModal = true;
+                    // Wait for DOM to render the canvas elements
+                    await this.$nextTick();
+                    this.renderCharts(item.profile_id, item.category_id);
+                },
+                closeChartModal() {
+                    this.showChartModal = false;
+                    if(this.intradayChartInstance) this.intradayChartInstance.destroy();
+                    if(this.historicalChartInstance) this.historicalChartInstance.destroy();
+                },
+                async renderCharts(profile_id, category_id) {
+                    try {
+                        const res = await axios.get(`/api/usage/${profile_id}/${category_id}`);
+                        const data = res.data;
+                        
+                        const chartOptions = {
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            plugins: { legend: { display: false } },
+                            scales: {
+                                y: { beginAtZero: true, title: { display: true, text: 'Minutes' } }
+                            }
+                        };
+                        
+                        // Current Time Marker Plugin
+                        const currentTimePlugin = {
+                            id: 'currentTimeMarker',
+                            afterDraw: (chart) => {
+                                const ctx = chart.ctx;
+                                const xAxis = chart.scales.x;
+                                const yAxis = chart.scales.y;
+                                
+                                const now = new Date();
+                                const currentHour = now.getHours();
+                                const currentMinute = now.getMinutes();
+                                
+                                const pixelForHour = xAxis.getPixelForValue(currentHour);
+                                let tickWidth = 0;
+                                if (currentHour < 23) {
+                                    tickWidth = xAxis.getPixelForValue(currentHour + 1) - pixelForHour;
+                                } else {
+                                    tickWidth = pixelForHour - xAxis.getPixelForValue(currentHour - 1);
+                                }
+                                
+                                const xPos = pixelForHour + (tickWidth * (currentMinute / 60));
+
+                                ctx.save();
+                                ctx.beginPath();
+                                ctx.moveTo(xPos, yAxis.top);
+                                ctx.lineTo(xPos, yAxis.bottom);
+                                ctx.lineWidth = 2;
+                                ctx.strokeStyle = 'rgba(255, 99, 132, 0.8)';
+                                ctx.setLineDash([5, 5]);
+                                ctx.stroke();
+                                
+                                ctx.fillStyle = 'rgba(255, 99, 132, 1)';
+                                ctx.textAlign = 'center';
+                                ctx.font = 'bold 10px Inter';
+                                ctx.fillText('Now', xPos, yAxis.top - 5);
+                                ctx.restore();
+                            }
+                        };
+                        
+                        // Intraday
+                        const ctxIntraday = document.getElementById('intradayChart').getContext('2d');
+                        if(this.intradayChartInstance) this.intradayChartInstance.destroy();
+                        this.intradayChartInstance = new Chart(ctxIntraday, {
+                            type: 'bar',
+                            data: {
+                                labels: data.intraday.map(d => d.hour + ':00'),
+                                datasets: [{
+                                    label: 'Usage (mins)',
+                                    data: data.intraday.map(d => d.minutes),
+                                    backgroundColor: data.intraday.map(d => d.hour === new Date().getHours() ? 'rgba(54, 162, 235, 0.9)' : 'rgba(54, 162, 235, 0.4)'),
+                                    borderColor: 'rgba(54, 162, 235, 1)',
+                                    borderWidth: 1
+                                }]
+                            },
+                            options: chartOptions,
+                            plugins: [currentTimePlugin]
+                        });
+                        
+                        // Historical
+                        const ctxHist = document.getElementById('historicalChart').getContext('2d');
+                        if(this.historicalChartInstance) this.historicalChartInstance.destroy();
+                        this.historicalChartInstance = new Chart(ctxHist, {
+                            type: 'bar',
+                            data: {
+                                labels: data.historical.map(d => d.date.slice(5)), // MM-DD
+                                datasets: [{
+                                    label: 'Usage (mins)',
+                                    data: data.historical.map(d => d.minutes),
+                                    backgroundColor: 'rgba(75, 192, 192, 0.5)',
+                                    borderColor: 'rgba(75, 192, 192, 1)',
+                                    borderWidth: 1
+                                }]
+                            },
+                            options: chartOptions
+                        });
+                        
+                    } catch (e) {
+                        console.error("Failed to load chart data", e);
+                    }
+                },
+                toggleDarkMode() {
+                    this.isDarkMode = !this.isDarkMode;
+                    if (this.isDarkMode) {
+                        document.documentElement.classList.add('dark');
+                    } else {
+                        document.documentElement.classList.remove('dark');
+                    }
+                    localStorage.setItem('darkMode', this.isDarkMode);
+                },
                 async fetchData() {
                     try {
                         await this.fetchSettings();
@@ -474,6 +818,38 @@
                         this.fetchProfiles();
                     }
                 },
+                startEditProfile(prof) {
+                    this.editingProfile = JSON.parse(JSON.stringify(prof)); // deep copy
+                },
+                async saveEditProfile() {
+                    const payload = { ...this.editingProfile };
+                    if(!payload.curfew_start) payload.curfew_start = null;
+                    if(!payload.curfew_end) payload.curfew_end = null;
+                    try {
+                        await axios.put(`/api/profiles/${payload.id}`, payload);
+                        this.editingProfile = null;
+                        this.fetchProfiles();
+                    } catch (e) {
+                        alert(e.response?.data?.detail || "Failed to update profile.");
+                    }
+                },
+                startEditQuota(quota) {
+                    this.editingQuota = JSON.parse(JSON.stringify(quota));
+                },
+                async saveQuotaEdit() {
+                    try {
+                        await axios.put(`/api/quotas/${this.editingQuota.id}`, {
+                            category_id: this.editingQuota.category_id,
+                            daily_limit_minutes: this.editingQuota.daily_limit_minutes,
+                            enforcement: this.editingQuota.enforcement || 'traffic_rule',
+                            traffic_rule_id: this.editingQuota.traffic_rule_id
+                        });
+                        this.editingQuota = null;
+                        this.fetchProfiles();
+                    } catch (e) {
+                        alert(e.response?.data?.detail || "Failed to update quota limit.");
+                    }
+                },
                 async addQuota(prof_id) {
                     const q = this.newQuota[prof_id];
                     if(!q.category_id) return alert("Select a category");
@@ -526,6 +902,12 @@
                 async unblockStation(prof_id) {
                     if(confirm("Lift station block?")) {
                         await axios.post(`/api/overrides/unblock-station/${prof_id}`);
+                        this.fetchDashboard();
+                    }
+                },
+                async blockStation(prof_id) {
+                    if(confirm("Block station (disconnect from Wi-Fi)?")) {
+                        await axios.post(`/api/overrides/block-station/${prof_id}`);
                         this.fetchDashboard();
                     }
                 },

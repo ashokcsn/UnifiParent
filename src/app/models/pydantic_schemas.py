@@ -63,6 +63,7 @@ class ProfileResponse(ProfileBase):
 class DashboardUsage(BaseModel):
     profile_id: int
     profile_name: str
+    profile_is_blocked: bool = False
     category_id: int
     category_name: str
     active_minutes: int
