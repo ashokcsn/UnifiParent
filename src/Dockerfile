@@ -12,8 +12,9 @@ COPY app/ /app/app/
 # Create directory for SQLite database
 RUN mkdir -p /data
 
-# Expose port
-EXPOSE 8000
+# Default port, can be overridden with APP_PORT environment variable
+ENV APP_PORT=8000
+EXPOSE $APP_PORT
 
 # Start FastAPI application
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD sh -c "uvicorn app.main:app --host 0.0.0.0 --port ${APP_PORT}"

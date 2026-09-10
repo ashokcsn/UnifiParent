@@ -29,7 +29,7 @@ async def check_quotas_and_enforce():
     Evaluates current usage against quotas and curfews, and enforces blocks via UniFi.
     """
     async with async_session() as db:
-        today_str = datetime.now().strftime("%Y-%M-%d")
+        today_str = datetime.now().strftime("%Y-%m-%d")
         now = datetime.now().time()
 
         # 1. Fetch profiles and usages
@@ -61,25 +61,31 @@ async def check_quotas_and_enforce():
                     logger.info(f"Enforcing curfew for {profile.name} via {profile.curfew_enforcement}")
                     success = False
 
-                    if profile.curfew_enforcement == "station_block":
-                        success = await unifi.block_station(profile.mac_address)
-                    elif profile.curfew_enforcement == "traffic_rule":
-                         # Assuming there's a global traffic rule for curfew... not fully specified, default to station
-                         success = await unifi.block_station(profile.mac_address)
+                    if profile.audit_only:
+                        logger.info(f"Audit mode: Skipping UniFi block for {profile.name}")
+                        success = True
+                    else:
+                        if profile.curfew_enforcement == "station_block":
+                            success = await unifi.block_station(profile.mac_address)
+                        elif profile.curfew_enforcement == "traffic_rule":
+                             success = await unifi.block_station(profile.mac_address)
 
                     if success:
                         profile.is_blocked = True
-                        log = AuditLog(profile_id=profile.id, action="BLOCK", target="STATION", reason="Curfew started")
+                        log = AuditLog(profile_id=profile.id, action="BLOCK", target="STATION", reason="Curfew started (Audit)" if profile.audit_only else "Curfew started")
                         db.add(log)
             else:
                 # If curfew is over, we should unblock the station IF it was blocked by curfew
                 if profile.is_blocked:
-                    if not unifi_logged_in:
+                    if not unifi_logged_in and not profile.audit_only:
                         await unifi.login()
                         unifi_logged_in = True
 
                     logger.info(f"Lifting curfew for {profile.name}")
-                    success = await unifi.unblock_station(profile.mac_address)
+                    success = True
+                    if not profile.audit_only:
+                        success = await unifi.unblock_station(profile.mac_address)
+                        
                     if success:
                         profile.is_blocked = False
                         log = AuditLog(profile_id=profile.id, action="UNBLOCK", target="STATION", reason="Curfew ended")
@@ -100,19 +106,23 @@ async def check_quotas_and_enforce():
 
                 if usage and usage.active_minutes >= quota.daily_limit_minutes and not usage.is_blocked:
                     # Time limit reached
-                    if not unifi_logged_in:
+                    if not unifi_logged_in and not profile.audit_only:
                         await unifi.login()
                         unifi_logged_in = True
 
                     logger.info(f"Profile {profile.name} reached quota for category ID {quota.category_id}")
                     success = False
 
-                    if quota.enforcement == "traffic_rule" and quota.traffic_rule_id:
-                        success = await unifi.set_traffic_rule(quota.traffic_rule_id, enabled=True)
-                    elif quota.enforcement == "station_block":
-                        success = await unifi.block_station(profile.mac_address)
-                        if success:
-                            profile.is_blocked = True # Update global block state
+                    if profile.audit_only:
+                        logger.info(f"Audit mode: Skipping UniFi quota block for {profile.name}")
+                        success = True
+                    else:
+                        if quota.enforcement == "traffic_rule" and quota.traffic_rule_id:
+                            success = await unifi.set_traffic_rule(quota.traffic_rule_id, enabled=True)
+                        elif quota.enforcement == "station_block":
+                            success = await unifi.block_station(profile.mac_address)
+                            if success:
+                                profile.is_blocked = True # Update global block state
 
                     if success:
                         usage.is_blocked = True

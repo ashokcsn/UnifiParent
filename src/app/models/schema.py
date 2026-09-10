@@ -35,6 +35,7 @@ class Profile(Base):
     curfew_end = Column(Time, nullable=True)   # E.g., 07:00
     curfew_enforcement = Column(String, default="station_block") # station_block or traffic_rule
     is_blocked = Column(Boolean, default=False)
+    audit_only = Column(Boolean, default=False)
 
     quotas = relationship("ProfileQuota", back_populates="profile", cascade="all, delete")
     daily_usage = relationship("DailyUsage", back_populates="profile", cascade="all, delete")

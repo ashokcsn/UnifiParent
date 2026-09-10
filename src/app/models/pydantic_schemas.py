@@ -48,6 +48,7 @@ class ProfileBase(BaseModel):
     curfew_start: Optional[time] = None
     curfew_end: Optional[time] = None
     curfew_enforcement: str = "station_block"
+    audit_only: bool = False
 
 class ProfileCreate(ProfileBase):
     pass

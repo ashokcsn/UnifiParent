@@ -12,13 +12,63 @@ class PiholeClient:
     async def fetch_queries(self, base_url: str, api_key: str, from_epoch: int, until_epoch: int) -> list:
         """
         Fetches queries from the Pi-hole API between two epoch timestamps.
-        Requires the API token for authentication.
+        Supports both Pi-hole v5 (token) and Pi-hole v6 (App Password session).
         """
         if not base_url or not api_key:
             return []
 
-        # The v5 API allows retrieving queries for a specific timeframe using 'from' and 'until' parameters
-        url = f"{base_url.rstrip('/')}/admin/api.php"
+        base_url = base_url.rstrip('/')
+        v6_auth_url = f"{base_url}/api/auth"
+        
+        headers = {}
+        # 1. Try Pi-hole v6 Authentication
+        try:
+            async with self.session.post(v6_auth_url, json={"password": api_key}, timeout=5) as response:
+                if response.status == 200:
+                    auth_data = await response.json()
+                    sid = auth_data.get("session", {}).get("sid")
+                    if sid:
+                        headers["sid"] = sid
+                        
+                        try:
+                            # Fetch v6 queries
+                            v6_queries_url = f"{base_url}/api/queries"
+                            params = {"from": from_epoch, "until": until_epoch}
+                            async with self.session.get(v6_queries_url, params=params, headers=headers, timeout=10) as q_resp:
+                                if q_resp.status == 200:
+                                    data = await q_resp.json()
+                                    # v6 returns a dict with 'queries' array of objects
+                                    queries = data.get("queries", [])
+                                    formatted_queries = []
+                                    for q in queries:
+                                        if isinstance(q, dict):
+                                            # Pi-hole v6 client is a dict {"ip": "...", "name": "..."}
+                                            client_obj = q.get("client")
+                                            client_ip = client_obj.get("ip") if isinstance(client_obj, dict) else str(client_obj)
+                                            # Format: [timestamp, type, domain, client]
+                                            formatted_queries.append([
+                                                q.get("time"), q.get("type"), q.get("domain"), client_ip
+                                            ])
+                                    return formatted_queries
+                                else:
+                                    logger.error(f"v6 API fetched failed: {q_resp.status}")
+                                    return None
+                        finally:
+                            # Always delete the session to prevent "API seats exceeded" errors in Pi-hole v6
+                            try:
+                                async with self.session.delete(v6_auth_url, headers=headers, timeout=3):
+                                    pass
+                            except Exception as e:
+                                logger.error(f"Failed to cleanly logout of Pi-hole v6: {e}")
+                elif response.status == 401:
+                    logger.error(f"Pi-hole v6 authentication failed for {base_url}. Is the App Password correct?")
+                    return None
+        except Exception as e:
+            # Not v6, or v6 is disabled/unreachable, fall back to v5
+            pass
+
+        # 2. Fall back to Pi-hole v5
+        url = f"{base_url}/admin/api.php"
         params = {
             "getAllQueries": 1,
             "from": from_epoch,
@@ -30,15 +80,17 @@ class PiholeClient:
             async with self.session.get(url, params=params, timeout=10) as response:
                 if response.status == 200:
                     data = await response.json(content_type=None)
-                    # The response format for getAllQueries is a dict with a 'data' key containing a list of lists.
-                    # Each inner list represents a query: [timestamp, type, domain, client, status, dnssec, reply, time]
+                    # v5 returns dict with 'data' array of arrays
                     return data.get("data", [])
+                elif response.status == 400:
+                    logger.error(f"Failed to fetch v5 queries from {base_url}. Status 400. (If this is Pi-hole v6, your App Password is wrong).")
+                    return None
                 else:
                     logger.error(f"Failed to fetch queries from {base_url}. Status: {response.status}")
-                    return []
+                    return None
         except Exception as e:
             logger.error(f"Exception while fetching queries from {base_url}: {e}")
-            return []
+            return None
 
 async def process_pihole_telemetry(db_session, start_epoch: int, end_epoch: int):
     """
@@ -84,12 +136,14 @@ async def process_pihole_telemetry(db_session, start_epoch: int, end_epoch: int)
         # Poll Pi-hole 1
         if settings.pihole_url_1 and settings.pihole_api_key_1:
             q1 = await pihole_client.fetch_queries(settings.pihole_url_1, settings.pihole_api_key_1, start_epoch, end_epoch)
-            all_queries.extend(q1)
+            if q1 is not None:
+                all_queries.extend(q1)
 
         # Poll Pi-hole 2
         if settings.pihole_url_2 and settings.pihole_api_key_2:
             q2 = await pihole_client.fetch_queries(settings.pihole_url_2, settings.pihole_api_key_2, start_epoch, end_epoch)
-            all_queries.extend(q2)
+            if q2 is not None:
+                all_queries.extend(q2)
 
     if not all_queries:
         return
@@ -137,7 +191,7 @@ async def process_pihole_telemetry(db_session, start_epoch: int, end_epoch: int)
             active_minutes_tracker[profile.id][matched_cat_id].add(minute_epoch)
 
     # 5. Update DailyUsage in database
-    today_str = datetime.now().strftime("%Y-%M-%d") # Use current date for usage
+    today_str = datetime.now().strftime("%Y-%m-%d") # Use current date for usage
 
     for profile_id, category_tracker in active_minutes_tracker.items():
         for category_id, minutes_set in category_tracker.items():
